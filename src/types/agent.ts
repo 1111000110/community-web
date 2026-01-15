@@ -1,0 +1,119 @@
+// 知识库检索配置
+export interface KBSearchConfig {
+  knowledge_list?: string[];
+  top_k?: number;
+  score_threshold?: number;
+}
+
+// 联网搜索配置
+export interface WebSearchConfig {
+  top_k?: number;
+  recency_days?: number;
+  allow_domains?: string[];
+  block_domains?: string[];
+  max_calls_per_turn?: number;
+}
+
+// 工具配置
+export interface ToolConfig {
+  kb?: KBSearchConfig;
+  web?: WebSearchConfig;
+}
+
+// Agent聊天配置
+export interface AgentChatConfig {
+  supplier_name?: string;
+  model_id?: string;
+  is_think?: boolean;
+  reasoning_effort?: string;
+  max_context_tokens?: number;
+  max_think_tokens?: number;
+  is_service_tier?: boolean;
+  stop?: string[];
+  response_format?: string;
+  frequency_penalty?: number;
+  presence_penalty?: number;
+  temperature?: number;
+  top_p?: number;
+  system_prompt?: string;
+  chat_type?: number;
+  chat_round?: number;
+  enable_tools?: string[];
+  tool_config?: ToolConfig;
+}
+
+// Agent详情
+export interface AgentDetail {
+  agent_id: number;
+  api_key?: string;
+  name: string;
+  desc?: string;
+  icon?: string;
+  status: number;
+  create_time: number;
+  update_time: number;
+  agent_chat_config: AgentChatConfig;
+}
+
+// 消息工具调用
+export interface MessageTool {
+  tool_id: string;
+  name: string;
+  arguments: string;
+}
+
+// Agent消息详情
+export interface AgentMessageDetail {
+  agent_id: number;
+  agent_session_id: string;
+  message_agent_session_id: string;
+  agent_chat_id?: number;
+  role: string;
+  message_type: number;
+  message_content: string;
+  reasoning_content?: string;
+  tool_call_id?: string;
+  tool_calls?: MessageTool[];
+}
+
+// API请求/响应类型
+export interface CreateAgentReq {
+  name: string;
+  desc?: string;
+  icon?: string;
+  agent_chat_config: AgentChatConfig;
+}
+
+export interface GetAgentListResp {
+  agent_list: AgentDetail[];
+}
+
+export interface RunAgentReq {
+  agent_id: number;
+  api_key: string;
+  agent_message: AgentMessageDetail;
+}
+
+export interface RunAgentResp {
+  agent_message: AgentMessageDetail;
+}
+
+// 更新Agent请求
+export interface UpdateAgentReq {
+  agent_id: number;
+  name?: string;
+  desc?: string;
+  icon?: string;
+  agent_chat_config?: AgentChatConfig;
+}
+
+// 删除Agent请求
+export interface DeleteAgentReq {
+  agent_id: number;
+  api_key: string;
+}
+
+// 获取Agent列表请求
+export interface GetAgentListReq {
+  is_all?: boolean;
+}
