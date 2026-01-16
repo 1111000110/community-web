@@ -45,12 +45,12 @@ const ChatPage: React.FC = () => {
   const [sessionId] = useState(() => `session_${Date.now()}`);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 获取Agent信息（完全使用缓存，不重新请求）
+  // 获取Agent信息（优先使用缓存，但允许读取最新数据）
   const { data: agentListData } = useQuery({
     queryKey: ['agentList'],
-    queryFn: getAgentList,
-    staleTime: Infinity, // 数据永不过期
-    refetchOnMount: false, // 挂载时不重新请求
+    queryFn: () => getAgentList(),
+    staleTime: 5 * 60 * 1000, // 5分钟内认为数据是新鲜的
+    refetchOnMount: false, // 挂载时不重新请求，直接使用缓存
     refetchOnWindowFocus: false, // 窗口聚焦时不重新请求
   });
 

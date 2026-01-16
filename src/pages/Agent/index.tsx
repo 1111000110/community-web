@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Table,
   Button,
@@ -44,6 +44,14 @@ const AgentPage: React.FC = () => {
     queryKey: ['agentList', showAll],
     queryFn: () => getAgentList({ is_all: showAll }),
   });
+
+  // 每次列表数据更新后，同步更新通用缓存（不带 showAll 参数）
+  // 这样 Chat 页面可以获取到最新的列表数据
+  useEffect(() => {
+    if (data) {
+      queryClient.setQueryData(['agentList'], data);
+    }
+  }, [data, queryClient]);
 
   // 创建Agent
   const createMutation = useMutation({
