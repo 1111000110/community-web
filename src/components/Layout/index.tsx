@@ -1,6 +1,12 @@
 import React from 'react';
 import { Layout, Menu, Typography, Button, Tooltip } from 'antd';
-import { RobotOutlined, ToolOutlined, SunOutlined, MoonOutlined } from '@ant-design/icons';
+import {
+  RobotOutlined,
+  ToolOutlined,
+  DatabaseOutlined,
+  SunOutlined,
+  MoonOutlined,
+} from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -27,6 +33,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
       key: '/agent',
       icon: <RobotOutlined />,
       label: 'Agent 管理',
+    },
+    {
+      key: '/llm',
+      icon: <DatabaseOutlined />,
+      label: 'LLM 模型管理',
     },
     {
       key: '/tools',

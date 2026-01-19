@@ -22,8 +22,9 @@ import {
   SaveOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { updateAgent } from '../../api/agent';
+import { getLlmList } from '../../api/llm';
 import type { AgentDetail, AgentChatConfig, UpdateAgentReq } from '../../types/agent';
 import ChangeConfirmModal from '../../components/ChangeConfirmModal';
 import type { ChangeItem } from '../../components/ChangeConfirmModal';
@@ -46,8 +47,7 @@ interface AgentSidebarProps {
 const fieldLabels: Record<string, string> = {
   name: '名称',
   desc: '描述',
-  supplier_name: '供应商',
-  model_id: '模型ID',
+  llm_id: '模型',
   temperature: '温度',
   top_p: 'Top P',
   frequency_penalty: '频率惩罚',
@@ -105,7 +105,17 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
   const [pendingData, setPendingData] = useState<UpdateAgentReq | null>(null);
   const queryClient = useQueryClient();
 
+  // 在编辑模式下获取LLM列表
+  const { data: llmData } = useQuery({
+    queryKey: ['llmList'],
+    queryFn: () => getLlmList(),
+    enabled: isEditing, // 只在编辑模式下加载
+  });
+
   const config = agent.agent_chat_config || {};
+
+  // 使用 Agent 自带的 LLM 信息
+  const currentLlm = agent.llm_info;
 
   // 重置表单
   useEffect(() => {
@@ -114,7 +124,20 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
       form.setFieldsValue({
         name: agent.name,
         desc: agent.desc,
-        ...config,
+        llm_id: config.llm_id,
+        is_think: config.is_think,
+        reasoning_effort: config.reasoning_effort,
+        max_context_tokens: config.max_context_tokens,
+        max_think_tokens: config.max_think_tokens,
+        is_service_tier: config.is_service_tier,
+        response_format: config.response_format,
+        frequency_penalty: config.frequency_penalty,
+        presence_penalty: config.presence_penalty,
+        temperature: config.temperature,
+        top_p: config.top_p,
+        system_prompt: config.system_prompt,
+        chat_type: config.chat_type,
+        chat_round: config.chat_round,
         stop: config.stop?.join(', ') || '',
         enable_tools: config.enable_tools?.join(', ') || '',
         // 工具配置 - 知识库
@@ -158,7 +181,7 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
 
     // 配置字段
     const configFields = [
-      'supplier_name', 'model_id', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty',
+      'temperature', 'top_p', 'frequency_penalty', 'presence_penalty',
       'is_think', 'reasoning_effort', 'max_context_tokens', 'max_think_tokens',
       'chat_type', 'chat_round', 'response_format',
     ];
@@ -179,6 +202,25 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
         changeList.push({ field, label: fieldLabels[field], oldValue: oldVal as React.ReactNode, newValue: newVal as React.ReactNode });
       }
     });
+
+    // 特殊处理 llm_id 字段
+    const oldLlmId = config.llm_id;
+    const newLlmId = values.llm_id as number;
+    if (oldLlmId !== newLlmId) {
+      // 获取对应的 LLM 信息
+      const oldLlm = llmData?.llm_detail?.find(llm => llm.llm_id === oldLlmId);
+      const newLlm = llmData?.llm_detail?.find(llm => llm.llm_id === newLlmId);
+      
+      const oldDisplay = oldLlm ? `${oldLlm.llm_name} (${oldLlm.supplier_model_id})` : `ID: ${oldLlmId}`;
+      const newDisplay = newLlm ? `${newLlm.llm_name} (${newLlm.supplier_model_id})` : `ID: ${newLlmId}`;
+      
+      changeList.push({ 
+        field: 'llm_id',
+        label: fieldLabels.llm_id, 
+        oldValue: oldLlmId === undefined ? '-' : oldDisplay, 
+        newValue: newLlmId === undefined ? '-' : newDisplay 
+      });
+    }
 
     // 系统提示词 - 显示完整内容
     if (values.system_prompt !== config.system_prompt) {
@@ -263,8 +305,7 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
           // 保留所有原始配置
           ...config,
           // 覆盖表单中的值
-          supplier_name: values.supplier_name ?? config.supplier_name,
-          model_id: values.model_id ?? config.model_id,
+          llm_id: values.llm_id ?? config.llm_id,
           temperature: values.temperature ?? config.temperature,
           top_p: values.top_p ?? config.top_p,
           frequency_penalty: values.frequency_penalty ?? config.frequency_penalty,
@@ -277,6 +318,7 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
           chat_round: values.chat_round ?? config.chat_round,
           response_format: values.response_format ?? config.response_format,
           system_prompt: values.system_prompt ?? config.system_prompt,
+          is_service_tier: values.is_service_tier ?? config.is_service_tier,
           stop: values.stop ? (values.stop as string).split(',').map((s: string) => s.trim()).filter(Boolean) : config.stop,
           enable_tools: values.enable_tools ? (values.enable_tools as string).split(',').map((s: string) => s.trim()).filter(Boolean) : config.enable_tools,
           // 工具配置
@@ -349,8 +391,9 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
       <Text strong style={{ fontSize: 13, color: mutedColor, display: 'block', marginBottom: 12 }}>
         模型配置
       </Text>
-      <InfoItem label="供应商" value={<Tag color="blue">{config.supplier_name}</Tag>} />
-      <InfoItem label="模型" value={config.model_id} />
+      <InfoItem label="模型名称" value={currentLlm?.llm_name || '未知模型'} />
+      <InfoItem label="供应商" value={<Tag color="blue">{currentLlm?.supplier_name || '-'}</Tag>} />
+      <InfoItem label="供应商模型ID" value={<code>{currentLlm?.supplier_model_id || '-'}</code>} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <InfoItem label="温度" value={config.temperature} />
         <InfoItem label="Top P" value={config.top_p} />
@@ -469,11 +512,30 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
             label: <Text strong style={{ color: mutedColor }}>模型配置</Text>,
             children: (
               <>
-                <Form.Item name="supplier_name" label="供应商">
-                  <Input placeholder="deepseek, kimi" />
-                </Form.Item>
-                <Form.Item name="model_id" label="模型ID">
-                  <Input />
+                <Form.Item
+                  name="llm_id"
+                  label="选择模型"
+                  rules={[{ required: true, message: '请选择模型' }]}
+                >
+                  <Select
+                    placeholder="请选择一个 LLM 模型"
+                    showSearch
+                    optionFilterProp="children"
+                    loading={!llmData}
+                  >
+                    {llmData?.llm_detail
+                      ?.filter((llm) => llm.status === 0)
+                      .map((llm) => (
+                        <Select.Option key={llm.llm_id} value={llm.llm_id}>
+                          <Space>
+                            <span>{llm.llm_name}</span>
+                            <span style={{ color: '#999', fontSize: 12 }}>
+                              ({llm.supplier_name} - {llm.supplier_model_id})
+                            </span>
+                          </Space>
+                        </Select.Option>
+                      ))}
+                  </Select>
                 </Form.Item>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <Form.Item name="temperature" label="温度">

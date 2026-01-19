@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Modal,
   Form,
@@ -15,6 +15,8 @@ import {
   Tooltip,
 } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
+import { getLlmList } from '../../api/llm';
 import type { CreateAgentReq } from '../../types/agent';
 
 interface CreateModalProps {
@@ -97,6 +99,13 @@ const CreateModal: React.FC<CreateModalProps> = ({
 }) => {
   const [form] = Form.useForm();
 
+  // 获取LLM列表
+  const { data: llmData } = useQuery({
+    queryKey: ['llmList'],
+    queryFn: () => getLlmList(),
+    enabled: open, // 只有模态框打开时才请求
+  });
+
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
@@ -116,8 +125,7 @@ const CreateModal: React.FC<CreateModalProps> = ({
         desc: values.desc,
         icon: values.icon,
         agent_chat_config: {
-          supplier_name: values.supplier_name,
-          model_id: values.model_id,
+          llm_id: values.llm_id,
           system_prompt: values.system_prompt,
           temperature: values.temperature,
           top_p: values.top_p,
@@ -206,27 +214,31 @@ const CreateModal: React.FC<CreateModalProps> = ({
       label: '模型配置',
       children: (
         <>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="supplier_name"
-                label="供应商"
-                rules={[{ required: true }]}
-              >
-                <Select>
-                  <Select.Option value="doubao">豆包</Select.Option>
-                  <Select.Option value="kimi">Kimi</Select.Option>
-                  <Select.Option value="openai">OpenAI</Select.Option>
-                  <Select.Option value="deepseek">DeepSeek</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="model_id" label="模型ID">
-                <Input placeholder="例如：deepseek-chat" />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="llm_id"
+            label="选择模型"
+            rules={[{ required: true, message: '请选择模型' }]}
+          >
+            <Select
+              placeholder="请选择一个 LLM 模型"
+              showSearch
+              optionFilterProp="children"
+              loading={!llmData}
+            >
+              {llmData?.llm_detail
+                ?.filter((llm) => llm.status === 0) // 只显示正常状态的模型
+                .map((llm) => (
+                  <Select.Option key={llm.llm_id} value={llm.llm_id}>
+                    <Space>
+                      <span>{llm.llm_name}</span>
+                      <span style={{ color: '#999', fontSize: 12 }}>
+                        ({llm.supplier_name} - {llm.supplier_model_id})
+                      </span>
+                    </Space>
+                  </Select.Option>
+                ))}
+            </Select>
+          </Form.Item>
 
           <Row gutter={16}>
             <Col span={8}>
@@ -431,8 +443,6 @@ const CreateModal: React.FC<CreateModalProps> = ({
         form={form}
         layout="vertical"
         initialValues={{
-          supplier_name: 'deepseek',
-          model_id: 'deepseek-chat',
           temperature: 0.7,
           top_p: 0.9,
           max_context_tokens: 4096,

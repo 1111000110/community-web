@@ -10,6 +10,7 @@ import {
   Avatar,
   Empty,
   Tooltip,
+  theme,
 } from 'antd';
 import {
   SendOutlined,
@@ -54,9 +55,14 @@ const ChatPage: React.FC = () => {
     refetchOnWindowFocus: false, // 窗口聚焦时不重新请求
   });
 
-  const agent = agentListData?.agent_list?.find(
-    (a) => a.agent_id === Number(agentId)
+  const agentRecord = agentListData?.agent_list?.find(
+    (a) => a.agent_detail.agent_id === Number(agentId)
   );
+
+  const agent = agentRecord ? {
+    ...agentRecord.agent_detail,
+    llm_info: agentRecord.llm_detail,
+  } : null;
 
   // 滚动到底部
   const scrollToBottom = () => {

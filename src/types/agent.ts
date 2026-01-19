@@ -1,3 +1,11 @@
+// LLM信息
+export interface LlmInfo {
+  llm_id: number;
+  llm_name: string;
+  supplier_name: string;
+  supplier_model_id: string;
+}
+
 // 知识库检索配置
 export interface KBSearchConfig {
   knowledge_list?: string[];
@@ -22,8 +30,7 @@ export interface ToolConfig {
 
 // Agent聊天配置
 export interface AgentChatConfig {
-  supplier_name?: string;
-  model_id?: string;
+  llm_id: number;
   is_think?: boolean;
   reasoning_effort?: string;
   max_context_tokens?: number;
@@ -53,6 +60,7 @@ export interface AgentDetail {
   create_time: number;
   update_time: number;
   agent_chat_config: AgentChatConfig;
+  llm_info?: LlmInfo; // 包含LLM信息
 }
 
 // 消息工具调用
@@ -84,8 +92,12 @@ export interface CreateAgentReq {
   agent_chat_config: AgentChatConfig;
 }
 
+// Agent列表响应
 export interface GetAgentListResp {
-  agent_list: AgentDetail[];
+  agent_list: {
+    agent_detail: AgentDetail;
+    llm_detail?: LlmInfo;
+  }[];
 }
 
 export interface RunAgentReq {

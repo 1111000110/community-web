@@ -16,8 +16,9 @@ import {
   theme as antTheme,
 } from 'antd';
 import { CopyOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { updateAgent } from '../../api/agent';
+import { getLlmList } from '../../api/llm';
 import type { AgentDetail, AgentChatConfig, UpdateAgentReq } from '../../types/agent';
 import ChangeConfirmModal from '../../components/ChangeConfirmModal';
 import type { ChangeItem } from '../../components/ChangeConfirmModal';
@@ -37,8 +38,7 @@ const fieldLabels: Record<string, string> = {
   name: '名称',
   desc: '描述',
   icon: '图标URL',
-  supplier_name: '供应商',
-  model_id: '模型ID',
+  llm_id: '模型',
   temperature: '温度',
   top_p: 'Top P',
   frequency_penalty: '频率惩罚',
@@ -73,6 +73,18 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
+  // 获取LLM列表
+  const { data: llmData } = useQuery({
+    queryKey: ['llmList'],
+    queryFn: () => getLlmList(),
+    enabled: open, // 只有模态框打开时才请求
+  });
+
+  // 根据llm_id查找LLM信息
+  const currentLlm = agent?.llm_info || llmData?.llm_detail?.find(
+    (llm) => llm.llm_id === agent?.agent_chat_config?.llm_id
+  );
+
   // 主题相关颜色
   const bgColor = isDark ? '#1a2332' : '#fafafa';
   const borderColor = isDark ? '#2a3a4d' : '#e8e8e8';
@@ -82,17 +94,38 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
   useEffect(() => {
     if (open && agent) {
       const config = agent.agent_chat_config || {};
-      form.setFieldsValue({
-        name: agent.name,
-        desc: agent.desc,
-        icon: agent.icon,
-        ...config,
+      
+      // 确保所有字段都有默认值
+      const initialValues = {
+        name: agent.name || '',
+        desc: agent.desc || '',
+        icon: agent.icon || '',
+        llm_id: config.llm_id !== undefined ? config.llm_id : undefined,
+        is_think: config.is_think !== undefined ? config.is_think : false,
+        reasoning_effort: config.reasoning_effort || undefined,
+        max_context_tokens: config.max_context_tokens !== undefined ? config.max_context_tokens : 4096,
+        max_think_tokens: config.max_think_tokens !== undefined ? config.max_think_tokens : 1024,
+        is_service_tier: config.is_service_tier !== undefined ? config.is_service_tier : false,
+        response_format: config.response_format || 'text',
+        frequency_penalty: config.frequency_penalty !== undefined ? config.frequency_penalty : 0,
+        presence_penalty: config.presence_penalty !== undefined ? config.presence_penalty : 0,
+        temperature: config.temperature !== undefined ? config.temperature : 0.7,
+        top_p: config.top_p !== undefined ? config.top_p : 0.9,
+        system_prompt: config.system_prompt || '',
+        chat_type: config.chat_type !== undefined ? config.chat_type : 1, // SessionID控制
+        chat_round: config.chat_round !== undefined ? config.chat_round : 10,
         stop: config.stop?.join(', ') || '',
         enable_tools: config.enable_tools?.join(', ') || '',
-      });
+      };
+      
+      // 使用 setTimeout 确保表单已经挂载
+      setTimeout(() => {
+        form.setFieldsValue(initialValues);
+      }, 0);
+      
       setIsEditing(false);
     }
-  }, [open, agent, form]);
+  }, [open, agent]); // 移除 form 依赖
 
   const updateMutation = useMutation({
     mutationFn: updateAgent,
@@ -100,8 +133,8 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
       message.success('保存成功');
       queryClient.invalidateQueries({ queryKey: ['agentList'] });
       setConfirmOpen(false);
-      setIsEditing(false);
-      onClose();
+      setIsEditing(false); // 确保退出编辑模式
+      onClose(); // 关闭模态框
     },
     onError: () => {
       message.error('保存失败');
@@ -112,68 +145,184 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
 
   const config = agent.agent_chat_config || {};
 
-  // 计算变更项
+  // 计算变更项 - 更智能的比较逻辑
   const calculateChanges = (values: Record<string, unknown>): ChangeItem[] => {
     const changeList: ChangeItem[] = [];
     const originalConfig = config;
 
-    // 基础字段
+    // 基础字段 - 严格相等比较
     if (values.name !== agent.name) {
       changeList.push({ field: 'name', label: fieldLabels.name, oldValue: agent.name, newValue: values.name as string });
     }
     if (values.desc !== agent.desc) {
-      changeList.push({ field: 'desc', label: fieldLabels.desc, oldValue: agent.desc, newValue: values.desc as string });
+      changeList.push({ field: 'desc', label: fieldLabels.desc, oldValue: agent.desc || '', newValue: values.desc as string || '' });
     }
     if (values.icon !== agent.icon) {
-      changeList.push({ field: 'icon', label: fieldLabels.icon, oldValue: agent.icon, newValue: values.icon as string });
+      changeList.push({ field: 'icon', label: fieldLabels.icon, oldValue: agent.icon || '', newValue: values.icon as string || '' });
     }
 
-    // 配置字段
+    // 配置字段 - 更智能的比较
     const configFields = [
-      'supplier_name', 'model_id', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty',
+      'llm_id', 'temperature', 'top_p', 'frequency_penalty', 'presence_penalty',
       'is_think', 'reasoning_effort', 'max_context_tokens', 'max_think_tokens',
       'chat_type', 'chat_round', 'response_format', 'is_service_tier',
+      'system_prompt', 'stop', 'enable_tools'
     ];
 
     configFields.forEach((field) => {
       const oldVal = originalConfig[field as keyof AgentChatConfig];
       const newVal = values[field];
-      if (field === 'chat_type') {
-        if (oldVal !== newVal) {
+      
+      // 处理 undefined 新值的情况 - 这意味着该字段未被编辑
+      if (newVal === undefined) {
+        return;
+      }
+      
+      // 特殊处理布尔值字段
+      if (field === 'is_think' || field === 'is_service_tier') {
+        const oldBool = Boolean(oldVal);
+        const newBool = Boolean(newVal);
+        if (oldBool !== newBool) {
+          changeList.push({ 
+            field, 
+            label: fieldLabels[field], 
+            oldValue: oldBool ? '开启' : '关闭', 
+            newValue: newBool ? '开启' : '关闭' 
+          });
+        }
+      }
+      // 特殊处理数字字段
+      else if (['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 
+                'max_context_tokens', 'max_think_tokens', 'chat_round'].includes(field)) {
+        const oldNum = oldVal === undefined || oldVal === null ? undefined : Number(oldVal);
+        const newNum = newVal === undefined || newVal === null || newVal === '' ? undefined : Number(newVal);
+        
+        // 如果都是 undefined 或者数值相等，则没有变化
+        if (oldNum !== newNum) {
+          // 忽略 NaN 情况
+          if ((oldNum !== undefined && isNaN(oldNum)) || (newNum !== undefined && isNaN(newNum))) {
+            return;
+          }
+          
+          // 如果新值是默认值且原值未定义，不算变更
+          const defaultValueMap: Record<string, number> = {
+            'temperature': 0.7,
+            'top_p': 0.9,
+            'frequency_penalty': 0,
+            'presence_penalty': 0,
+            'max_context_tokens': 4096,
+            'max_think_tokens': 1024,
+            'chat_round': 10
+          };
+          
+          if (oldNum === undefined && newNum === defaultValueMap[field]) {
+            return;
+          }
+          
+          changeList.push({ 
+            field, 
+            label: fieldLabels[field], 
+            oldValue: oldNum === undefined ? '-' : oldNum, 
+            newValue: newNum === undefined ? '-' : newNum 
+          });
+        }
+      }
+      // 特殊处理 llm_id 字段
+      else if (field === 'llm_id') {
+        const oldLlmId = oldVal === undefined || oldVal === null ? undefined : Number(oldVal);
+        const newLlmId = newVal === undefined || newVal === null || newVal === '' ? undefined : Number(newVal);
+        
+        if (oldLlmId !== newLlmId) {
+          // 获取对应的 LLM 信息
+          const oldLlm = llmData?.llm_detail?.find(llm => llm.llm_id === oldLlmId);
+          const newLlm = llmData?.llm_detail?.find(llm => llm.llm_id === newLlmId);
+          
+          const oldDisplay = oldLlm ? `${oldLlm.llm_name} (${oldLlm.supplier_model_id})` : `ID: ${oldLlmId}`;
+          const newDisplay = newLlm ? `${newLlm.llm_name} (${newLlm.supplier_model_id})` : `ID: ${newLlmId}`;
+          
+          changeList.push({ 
+            field, 
+            label: fieldLabels[field], 
+            oldValue: oldLlmId === undefined ? '-' : oldDisplay, 
+            newValue: newLlmId === undefined ? '-' : newDisplay 
+          });
+        }
+      }
+      // 特殊处理聊天类型
+      else if (field === 'chat_type') {
+        const oldType = oldVal === undefined || oldVal === null ? undefined : Number(oldVal);
+        const newType = newVal === undefined || newVal === null || newVal === '' ? undefined : Number(newVal);
+        
+        if (oldType !== newType) {
+          // 忽略 NaN 情况
+          if ((oldType !== undefined && isNaN(oldType)) || (newType !== undefined && isNaN(newType))) {
+            return;
+          }
+          
+          // 默认值处理
+          if (oldType === undefined && newType === 1) { // 1 = SessionID控制
+            return;
+          }
+          
           changeList.push({
             field,
             label: fieldLabels[field],
-            oldValue: chatTypeMap[oldVal as number] || '-',
-            newValue: chatTypeMap[newVal as number] || '-',
+            oldValue: oldType === undefined ? '-' : chatTypeMap[oldType] || String(oldType),
+            newValue: newType === undefined ? '-' : chatTypeMap[newType] || String(newType),
           });
         }
-      } else if (oldVal !== newVal) {
-        changeList.push({ field, label: fieldLabels[field], oldValue: oldVal as React.ReactNode, newValue: newVal as React.ReactNode });
+      }
+      // 文本字段
+      else if (field === 'reasoning_effort' || field === 'response_format') {
+        const oldStr = oldVal === undefined || oldVal === null ? '' : String(oldVal);
+        const newStr = newVal === undefined || newVal === null ? '' : String(newVal);
+        
+        if (oldStr !== newStr) {
+          // 默认值处理
+          if (oldStr === '' && (newStr === 'medium' || newStr === 'text')) {
+            return;
+          }
+          
+          changeList.push({ 
+            field, 
+            label: fieldLabels[field], 
+            oldValue: oldStr || '-', 
+            newValue: newStr || '-' 
+          });
+        }
+      }
+      // 系统提示词
+      else if (field === 'system_prompt') {
+        const oldPrompt = oldVal === undefined || oldVal === null ? '' : String(oldVal);
+        const newPrompt = newVal === undefined || newVal === null ? '' : String(newVal);
+        
+        if (oldPrompt.trim() !== newPrompt.trim()) {
+          changeList.push({ 
+            field, 
+            label: fieldLabels[field], 
+            oldValue: oldPrompt || '-', 
+            newValue: newPrompt || '-' 
+          });
+        }
+      }
+      // 数组字段
+      else if (field === 'stop' || field === 'enable_tools') {
+        const oldArray = Array.isArray(oldVal) ? oldVal : (oldVal ? String(oldVal).split(',').map(s => s.trim()).filter(Boolean) : []);
+        const newArray = newVal ? String(newVal).split(',').map(s => s.trim()).filter(Boolean) : [];
+        
+        const arraysEqual = oldArray.length === newArray.length && 
+          oldArray.every((item, index) => item === newArray[index]);
+        
+        if (!arraysEqual) {
+          changeList.push({ 
+            field, 
+            label: fieldLabels[field], 
+            oldValue: oldArray.length > 0 ? oldArray.join(', ') : '-', 
+            newValue: newArray.length > 0 ? newArray.join(', ') : '-' 
+          });
+        }
       }
     });
-
-    // 系统提示词 - 显示完整内容
-    if (values.system_prompt !== originalConfig.system_prompt) {
-      changeList.push({
-        field: 'system_prompt',
-        label: fieldLabels.system_prompt,
-        oldValue: originalConfig.system_prompt || '',
-        newValue: (values.system_prompt as string) || '',
-      });
-    }
-
-    // 数组字段
-    const oldStop = originalConfig.stop?.join(', ') || '';
-    const newStop = values.stop as string || '';
-    if (oldStop !== newStop) {
-      changeList.push({ field: 'stop', label: fieldLabels.stop, oldValue: oldStop || '-', newValue: newStop || '-' });
-    }
-
-    const oldTools = originalConfig.enable_tools?.join(', ') || '';
-    const newTools = values.enable_tools as string || '';
-    if (oldTools !== newTools) {
-      changeList.push({ field: 'enable_tools', label: fieldLabels.enable_tools, oldValue: oldTools || '-', newValue: newTools || '-' });
-    }
 
     return changeList;
   };
@@ -182,8 +331,9 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      
       const changeList = calculateChanges(values);
-
+      
       if (changeList.length === 0) {
         message.info('没有修改任何内容');
         return;
@@ -199,8 +349,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
           // 保留所有原始配置
           ...config,
           // 覆盖表单中的值
-          supplier_name: values.supplier_name ?? config.supplier_name,
-          model_id: values.model_id ?? config.model_id,
+          llm_id: values.llm_id ?? config.llm_id,
           temperature: values.temperature ?? config.temperature,
           top_p: values.top_p ?? config.top_p,
           frequency_penalty: values.frequency_penalty ?? config.frequency_penalty,
@@ -222,6 +371,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
       setChanges(changeList);
       setPendingData(updateData);
       setConfirmOpen(true);
+      setIsEditing(false); // 保存时关闭编辑模式
     } catch {
       message.error('请检查表单填写');
     }
@@ -297,8 +447,9 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
             label: '模型配置',
             children: (
               <div style={{ padding: '16px 0' }}>
-                <InfoRow label="供应商" value={<Tag color="blue">{config.supplier_name || '-'}</Tag>} />
-                <InfoRow label="模型ID" value={config.model_id} />
+                <InfoRow label="模型名称" value={currentLlm?.llm_name || '-'} />
+                <InfoRow label="供应商" value={<Tag color="blue">{currentLlm?.supplier_name || '-'}</Tag>} />
+                <InfoRow label="供应商模型ID" value={<code>{currentLlm?.supplier_model_id || '-'}</code>} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <InfoRow label="温度" value={config.temperature} />
                   <InfoRow label="Top P" value={config.top_p} />
@@ -403,11 +554,30 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
             label: '模型配置',
             children: (
               <div style={{ padding: '16px 0' }}>
-                <Form.Item name="supplier_name" label="供应商">
-                  <Input placeholder="如: deepseek, kimi" />
-                </Form.Item>
-                <Form.Item name="model_id" label="模型ID">
-                  <Input placeholder="如: deepseek-chat" />
+                <Form.Item
+                  name="llm_id"
+                  label="选择模型"
+                  rules={[{ required: true, message: '请选择模型' }]}
+                >
+                  <Select
+                    placeholder="请选择一个 LLM 模型"
+                    showSearch
+                    optionFilterProp="children"
+                    loading={!llmData}
+                  >
+                    {llmData?.llm_detail
+                      ?.filter((llm) => llm.status === 0)
+                      .map((llm) => (
+                        <Select.Option key={llm.llm_id} value={llm.llm_id}>
+                          <Space>
+                            <span>{llm.llm_name}</span>
+                            <span style={{ color: '#999', fontSize: 12 }}>
+                              ({llm.supplier_name} - {llm.supplier_model_id})
+                            </span>
+                          </Space>
+                        </Select.Option>
+                      ))}
+                  </Select>
                 </Form.Item>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <Form.Item name="temperature" label="温度">
@@ -518,15 +688,77 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 32 }}>
             <span>Agent 详情 - {agent.name}</span>
             {!isEditing ? (
-              <Button type="primary" ghost size="small" onClick={() => setIsEditing(true)}>
+              <Button type="primary" ghost size="small" onClick={() => {
+                setIsEditing(true);
+                // 切换到编辑模式时确保表单字段被正确设置
+                if (agent) {
+                  const config = agent.agent_chat_config || {};
+                  const initialValues = {
+                    name: agent.name || '',
+                    desc: agent.desc || '',
+                    icon: agent.icon || '',
+                    llm_id: config.llm_id !== undefined ? config.llm_id : undefined,
+                    is_think: config.is_think !== undefined ? config.is_think : false,
+                    reasoning_effort: config.reasoning_effort || undefined,
+                    max_context_tokens: config.max_context_tokens !== undefined ? config.max_context_tokens : 4096,
+                    max_think_tokens: config.max_think_tokens !== undefined ? config.max_think_tokens : 1024,
+                    is_service_tier: config.is_service_tier !== undefined ? config.is_service_tier : false,
+                    response_format: config.response_format || 'text',
+                    frequency_penalty: config.frequency_penalty !== undefined ? config.frequency_penalty : 0,
+                    presence_penalty: config.presence_penalty !== undefined ? config.presence_penalty : 0,
+                    temperature: config.temperature !== undefined ? config.temperature : 0.7,
+                    top_p: config.top_p !== undefined ? config.top_p : 0.9,
+                    system_prompt: config.system_prompt || '',
+                    chat_type: config.chat_type !== undefined ? config.chat_type : 1, // SessionID控制
+                    chat_round: config.chat_round !== undefined ? config.chat_round : 10,
+                    stop: config.stop?.join(', ') || '',
+                    enable_tools: config.enable_tools?.join(', ') || '',
+                  };
+                  
+                  setTimeout(() => {
+                    form.setFieldsValue(initialValues);
+                  }, 0);
+                }
+              }}>
                 编辑
               </Button>
             ) : (
               <Space>
-                <Button size="small" icon={<CloseOutlined />} onClick={() => setIsEditing(false)}>
+                <Button size="small" icon={<CloseOutlined />} onClick={() => {
+                  setIsEditing(false);
+                  // 重置表单到初始状态
+                  if (agent) {
+                    const config = agent.agent_chat_config || {};
+                    const initialValues = {
+                      name: agent.name || '',
+                      desc: agent.desc || '',
+                      icon: agent.icon || '',
+                      llm_id: config.llm_id !== undefined ? config.llm_id : undefined,
+                      is_think: config.is_think !== undefined ? config.is_think : false,
+                      reasoning_effort: config.reasoning_effort || undefined,
+                      max_context_tokens: config.max_context_tokens !== undefined ? config.max_context_tokens : 4096,
+                      max_think_tokens: config.max_think_tokens !== undefined ? config.max_think_tokens : 1024,
+                      is_service_tier: config.is_service_tier !== undefined ? config.is_service_tier : false,
+                      response_format: config.response_format || 'text',
+                      frequency_penalty: config.frequency_penalty !== undefined ? config.frequency_penalty : 0,
+                      presence_penalty: config.presence_penalty !== undefined ? config.presence_penalty : 0,
+                      temperature: config.temperature !== undefined ? config.temperature : 0.7,
+                      top_p: config.top_p !== undefined ? config.top_p : 0.9,
+                      system_prompt: config.system_prompt || '',
+                      chat_type: config.chat_type !== undefined ? config.chat_type : 1, // SessionID控制
+                      chat_round: config.chat_round !== undefined ? config.chat_round : 10,
+                      stop: config.stop?.join(', ') || '',
+                      enable_tools: config.enable_tools?.join(', ') || '',
+                    };
+                    
+                    setTimeout(() => {
+                      form.setFieldsValue(initialValues);
+                    }, 0);
+                  }
+                }}>
                   取消
                 </Button>
-                <Button type="primary" size="small" icon={<SaveOutlined />} onClick={handleSave}>
+                <Button type="primary" size="small" icon={<SaveOutlined />} onClick={handleSave} loading={updateMutation.isPending} disabled={updateMutation.isPending}>
                   保存
                 </Button>
               </Space>
