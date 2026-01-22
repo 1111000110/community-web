@@ -7,6 +7,7 @@ import AppLayout from './components/Layout';
 import AgentPage from './pages/Agent';
 import ChatPage from './pages/Chat';
 import LlmPage from './pages/Llm';
+import ToolPage from './pages/Tool';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ const AppContent: React.FC = () => {
                   <Route path="/" element={<Navigate to="/agent" replace />} />
                   <Route path="/agent" element={<AgentPage />} />
                   <Route path="/llm" element={<LlmPage />} />
+                  <Route path="/tools" element={<ToolPage />} />
                 </Routes>
               </AppLayout>
             }

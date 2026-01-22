@@ -14,12 +14,15 @@ import {
   message,
   ConfigProvider,
   theme as antTheme,
+  Tooltip,
 } from 'antd';
 import { CopyOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { updateAgent } from '../../api/agent';
 import { getLlmList } from '../../api/llm';
+import { getToolList } from '../../api/tool';
 import type { AgentDetail, AgentChatConfig, UpdateAgentReq } from '../../types/agent';
+import type { ToolDetail } from '../../types/tool';
 import ChangeConfirmModal from '../../components/ChangeConfirmModal';
 import type { ChangeItem } from '../../components/ChangeConfirmModal';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -80,6 +83,13 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
     enabled: open, // 只有模态框打开时才请求
   });
 
+  // 获取工具列表
+  const { data: toolData } = useQuery({
+    queryKey: ['toolList'],
+    queryFn: () => getToolList(),
+    enabled: open, // 只有模态框打开时才请求
+  });
+
   // 根据llm_id查找LLM信息
   const currentLlm = agent?.llm_info || llmData?.llm_detail?.find(
     (llm) => llm.llm_id === agent?.agent_chat_config?.llm_id
@@ -115,7 +125,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
         chat_type: config.chat_type !== undefined ? config.chat_type : 1, // SessionID控制
         chat_round: config.chat_round !== undefined ? config.chat_round : 10,
         stop: config.stop?.join(', ') || '',
-        enable_tools: config.enable_tools?.join(', ') || '',
+        enable_tools: config.enable_tools || [], // 改为数组格式
       };
       
       // 使用 setTimeout 确保表单已经挂载
@@ -364,7 +374,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
           system_prompt: values.system_prompt ?? config.system_prompt,
           is_service_tier: values.is_service_tier ?? config.is_service_tier,
           stop: values.stop ? (values.stop as string).split(',').map((s: string) => s.trim()).filter(Boolean) : config.stop,
-          enable_tools: values.enable_tools ? (values.enable_tools as string).split(',').map((s: string) => s.trim()).filter(Boolean) : config.enable_tools,
+          enable_tools: values.enable_tools ? values.enable_tools as string[] : config.enable_tools,
         },
       };
 
@@ -649,8 +659,24 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
                 <Form.Item name="chat_round" label="历史轮数">
                   <InputNumber min={0} max={100} style={{ width: '100%' }} />
                 </Form.Item>
-                <Form.Item name="enable_tools" label="可用工具" extra="多个工具用逗号分隔">
-                  <Input placeholder="如: tool1, tool2" />
+                <Form.Item name="enable_tools" label="可用工具">
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择可用的工具"
+                    showSearch
+                    optionFilterProp="children"
+                    loading={!toolData}
+                    options={toolData?.tool_list?.map((tool: ToolDetail) => ({
+                      label: tool.name,
+                      value: tool.name,
+                      desc: tool.description,
+                    })) || []}
+                    optionRender={(option) => (
+                      <Tooltip title={option.data.desc} placement="right">
+                        <div>{option.label}</div>
+                      </Tooltip>
+                    )}
+                  />
                 </Form.Item>
               </div>
             ),
@@ -712,7 +738,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
                     chat_type: config.chat_type !== undefined ? config.chat_type : 1, // SessionID控制
                     chat_round: config.chat_round !== undefined ? config.chat_round : 10,
                     stop: config.stop?.join(', ') || '',
-                    enable_tools: config.enable_tools?.join(', ') || '',
+                    enable_tools: config.enable_tools || [],
                   };
                   
                   setTimeout(() => {
@@ -748,7 +774,7 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
                       chat_type: config.chat_type !== undefined ? config.chat_type : 1, // SessionID控制
                       chat_round: config.chat_round !== undefined ? config.chat_round : 10,
                       stop: config.stop?.join(', ') || '',
-                      enable_tools: config.enable_tools?.join(', ') || '',
+                      enable_tools: config.enable_tools || [],
                     };
                     
                     setTimeout(() => {

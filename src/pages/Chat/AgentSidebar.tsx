@@ -14,6 +14,7 @@ import {
   Form,
   message,
   Collapse,
+  Tooltip,
 } from 'antd';
 import {
   RobotOutlined,
@@ -25,7 +26,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { updateAgent } from '../../api/agent';
 import { getLlmList } from '../../api/llm';
+import { getToolList } from '../../api/tool';
 import type { AgentDetail, AgentChatConfig, UpdateAgentReq } from '../../types/agent';
+import type { ToolDetail } from '../../types/tool';
 import ChangeConfirmModal from '../../components/ChangeConfirmModal';
 import type { ChangeItem } from '../../components/ChangeConfirmModal';
 
@@ -112,6 +115,13 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
     enabled: isEditing, // 只在编辑模式下加载
   });
 
+  // 在编辑模式下获取工具列表
+  const { data: toolData } = useQuery({
+    queryKey: ['toolList'],
+    queryFn: () => getToolList(),
+    enabled: isEditing, // 只在编辑模式下加载
+  });
+
   const config = agent.agent_chat_config || {};
 
   // 使用 Agent 自带的 LLM 信息
@@ -139,7 +149,7 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
         chat_type: config.chat_type,
         chat_round: config.chat_round,
         stop: config.stop?.join(', ') || '',
-        enable_tools: config.enable_tools?.join(', ') || '',
+        enable_tools: config.enable_tools || [], // 改为数组格式
         // 工具配置 - 知识库
         kb_knowledge_list: toolConfig.kb?.knowledge_list?.join(', ') || '',
         kb_top_k: toolConfig.kb?.top_k,
@@ -320,7 +330,7 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
           system_prompt: values.system_prompt ?? config.system_prompt,
           is_service_tier: values.is_service_tier ?? config.is_service_tier,
           stop: values.stop ? (values.stop as string).split(',').map((s: string) => s.trim()).filter(Boolean) : config.stop,
-          enable_tools: values.enable_tools ? (values.enable_tools as string).split(',').map((s: string) => s.trim()).filter(Boolean) : config.enable_tools,
+          enable_tools: values.enable_tools ? values.enable_tools as string[] : config.enable_tools,
           // 工具配置
           tool_config: {
             kb: {
@@ -361,7 +371,7 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
       desc: agent.desc,
       ...config,
       stop: config.stop?.join(', ') || '',
-      enable_tools: config.enable_tools?.join(', ') || '',
+      enable_tools: config.enable_tools || [],
       // 工具配置
       kb_knowledge_list: toolConfig.kb?.knowledge_list?.join(', ') || '',
       kb_top_k: toolConfig.kb?.top_k,
@@ -604,8 +614,24 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
                 <Form.Item name="chat_round" label="历史轮数">
                   <InputNumber min={0} max={100} style={{ width: '100%' }} />
                 </Form.Item>
-                <Form.Item name="enable_tools" label="可用工具" extra="逗号分隔">
-                  <Input />
+                <Form.Item name="enable_tools" label="可用工具">
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择可用的工具"
+                    showSearch
+                    optionFilterProp="children"
+                    loading={!toolData}
+                    options={toolData?.tool_list?.map((tool: ToolDetail) => ({
+                      label: tool.name,
+                      value: tool.name,
+                      desc: tool.description,
+                    })) || []}
+                    optionRender={(option) => (
+                      <Tooltip title={option.data.desc} placement="right">
+                        <div>{option.label}</div>
+                      </Tooltip>
+                    )}
+                  />
                 </Form.Item>
               </>
             ),

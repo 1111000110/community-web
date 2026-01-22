@@ -17,7 +17,9 @@ import {
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { getLlmList } from '../../api/llm';
+import { getToolList } from '../../api/tool';
 import type { CreateAgentReq } from '../../types/agent';
+import type { ToolDetail } from '../../types/tool';
 
 interface CreateModalProps {
   open: boolean;
@@ -106,6 +108,13 @@ const CreateModal: React.FC<CreateModalProps> = ({
     enabled: open, // 只有模态框打开时才请求
   });
 
+  // 获取工具列表
+  const { data: toolData } = useQuery({
+    queryKey: ['toolList'],
+    queryFn: () => getToolList(),
+    enabled: open, // 只有模态框打开时才请求
+  });
+
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
@@ -166,6 +175,7 @@ const CreateModal: React.FC<CreateModalProps> = ({
       onOk(req);
     } catch (error) {
       // 表单验证失败
+        console.error(error);
     }
   };
 
@@ -363,7 +373,23 @@ const CreateModal: React.FC<CreateModalProps> = ({
       children: (
         <>
           <Form.Item name="enable_tools" label="可用工具">
-            <Input placeholder="多个工具名用逗号分隔" />
+            <Select
+              mode="multiple"
+              placeholder="请选择可用的工具"
+              showSearch
+              optionFilterProp="children"
+              loading={!toolData}
+              options={toolData?.tool_list?.map((tool: ToolDetail) => ({
+                label: tool.name,
+                value: tool.name,
+                desc: tool.description,
+              })) || []}
+              optionRender={(option) => (
+                <Tooltip title={option.data.desc} placement="right">
+                  <div>{option.label}</div>
+                </Tooltip>
+              )}
+            />
           </Form.Item>
 
           <Collapse
