@@ -16,7 +16,7 @@ import {
   theme as antTheme,
   Tooltip,
 } from 'antd';
-import { CopyOutlined, SaveOutlined, CloseOutlined } from '@ant-design/icons';
+import { CopyOutlined, SaveOutlined, CloseOutlined, ExpandOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { updateAgent } from '../../api/agent';
 import { getLlmList } from '../../api/llm';
@@ -72,6 +72,8 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [changes, setChanges] = useState<ChangeItem[]>([]);
   const [pendingData, setPendingData] = useState<UpdateAgentReq | null>(null);
+  const [fullScreenPromptOpen, setFullScreenPromptOpen] = useState(false);
+  const [currentPromptValue, setCurrentPromptValue] = useState('');
   const queryClient = useQueryClient();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -394,6 +396,22 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
     }
   };
 
+  // 全屏编辑系统提示词
+  const handleFullScreenPrompt = () => {
+    const currentValue = form.getFieldValue('system_prompt') || '';
+    setCurrentPromptValue(currentValue);
+    setFullScreenPromptOpen(true);
+  };
+
+  const handlePromptSave = () => {
+    form.setFieldValue('system_prompt', currentPromptValue);
+    setFullScreenPromptOpen(false);
+  };
+
+  const handlePromptCancel = () => {
+    setFullScreenPromptOpen(false);
+  };
+
   // 查看模式的内容
   const ViewContent = () => (
     <>
@@ -513,6 +531,13 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
                       }}
                     />
                   )}
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<ExpandOutlined />}
+                    onClick={handleFullScreenPrompt}
+                    title="全屏编辑"
+                  />
                 </Space>
                 <Paragraph
                   style={{
@@ -687,7 +712,28 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
             children: (
               <div style={{ padding: '16px 0' }}>
                 <Form.Item name="system_prompt" label="系统提示词">
-                  <TextArea rows={8} placeholder="请输入系统提示词" />
+                  <div style={{ position: 'relative' }}>
+                    <TextArea 
+                      rows={8} 
+                      placeholder="请输入系统提示词"
+                      defaultValue={config.system_prompt || ''}
+                    />
+                    <Button
+                      type="text"
+                      icon={<ExpandOutlined />}
+                      onClick={handleFullScreenPrompt}
+                      style={{
+                        position: 'absolute',
+                        right: 8,
+                        top: 8,
+                        zIndex: 2,
+                        color: '#1890ff',
+                        background: isDark ? 'rgba(26, 35, 50, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+                        backdropFilter: 'blur(4px)',
+                      }}
+                      title="全屏编辑"
+                    />
+                  </div>
                 </Form.Item>
               </div>
             ),
@@ -798,6 +844,42 @@ const DetailModal: React.FC<DetailModalProps> = ({ open, agent, onClose }) => {
         destroyOnClose
       >
         {isEditing ? <EditContent /> : <ViewContent />}
+      </Modal>
+
+      {/* 全屏编辑系统提示词弹窗 */}
+      <Modal
+        title="编辑系统提示词"
+        open={fullScreenPromptOpen}
+        onOk={handlePromptSave}
+        onCancel={handlePromptCancel}
+        width="80%"
+        styles={{
+          body: {
+            height: '70vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+        okText="保存"
+        cancelText="取消"
+      >
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ marginBottom: 12, color: isDark ? 'rgba(255, 255, 255, 0.65)' : '#666' }}>
+            在此处编辑Agent的系统提示词，定义其角色和行为规范
+          </div>
+          <TextArea
+            value={currentPromptValue}
+            onChange={(e) => setCurrentPromptValue(e.target.value)}
+            placeholder="请输入系统提示词..."
+            style={{ 
+              flex: 1, 
+              resize: 'none',
+              background: isDark ? '#1a2332' : '#fff',
+              color: isDark ? 'rgba(255, 255, 255, 0.85)' : '#000'
+            }}
+            autoFocus
+          />
+        </div>
       </Modal>
 
       <ChangeConfirmModal

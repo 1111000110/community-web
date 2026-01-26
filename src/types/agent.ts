@@ -125,6 +125,19 @@ export interface DeleteAgentReq {
   api_key: string;
 }
 
+// 流式运行Agent请求
+export interface RunAgentStreamReq {
+  agent_id: number;
+  api_key: string;
+  agent_message: AgentMessageDetail;
+}
+
+// 流式运行Agent响应类型
+export interface RunAgentStreamResp {
+  type: string; // 消息类型: "message_start", "content", "reasoning", "tool_result", "message_end", "error"
+  data: string; // JSON 格式的具体内容
+}
+
 // 获取Agent列表请求
 export interface GetAgentListReq {
   is_all?: boolean;

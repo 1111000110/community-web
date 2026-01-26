@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, {  useState } from 'react';
 import {
   Modal,
   Form,
@@ -6,15 +6,15 @@ import {
   Select,
   InputNumber,
   Switch,
-  Typography,
   Space,
   Tabs,
   Collapse,
   Row,
   Col,
   Tooltip,
+  Button,
 } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { QuestionCircleOutlined, ExpandOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { getLlmList } from '../../api/llm';
 import { getToolList } from '../../api/tool';
@@ -29,7 +29,6 @@ interface CreateModalProps {
 }
 
 const { TextArea } = Input;
-const { Text } = Typography;
 
 // 参数说明配置
 const paramTooltips = {
@@ -100,6 +99,8 @@ const CreateModal: React.FC<CreateModalProps> = ({
   onOk,
 }) => {
   const [form] = Form.useForm();
+  const [fullScreenPromptOpen, setFullScreenPromptOpen] = useState(false);
+  const [currentPromptValue, setCurrentPromptValue] = useState('');
 
   // 获取LLM列表
   const { data: llmData } = useQuery({
@@ -184,6 +185,22 @@ const CreateModal: React.FC<CreateModalProps> = ({
     onCancel();
   };
 
+  // 全屏编辑系统提示词
+  const handleFullScreenPrompt = () => {
+    const currentValue = form.getFieldValue('system_prompt') || '';
+    setCurrentPromptValue(currentValue);
+    setFullScreenPromptOpen(true);
+  };
+
+  const handlePromptSave = () => {
+    form.setFieldValue('system_prompt', currentPromptValue);
+    setFullScreenPromptOpen(false);
+  };
+
+  const handlePromptCancel = () => {
+    setFullScreenPromptOpen(false);
+  };
+
   const tabItems = [
     {
       key: 'basic',
@@ -211,10 +228,28 @@ const CreateModal: React.FC<CreateModalProps> = ({
             label="系统提示词"
             rules={[{ required: true, message: '请输入系统提示词' }]}
           >
-            <TextArea
-              rows={4}
-              placeholder="定义Agent的角色和行为规范..."
-            />
+            <div style={{ position: 'relative' }}>
+              <TextArea
+                rows={6}
+                placeholder="定义Agent的角色和行为规范..."
+                style={{ paddingRight: 40 }}
+              />
+              <Button
+                type="text"
+                icon={<ExpandOutlined />}
+                onClick={handleFullScreenPrompt}
+                style={{
+                  position: 'absolute',
+                  right: 8,
+                  top: 8,
+                  zIndex: 2,
+                  color: '#1890ff',
+                  background: 'rgba(255, 255, 255, 0.9)',
+                  backdropFilter: 'blur(4px)',
+                }}
+                title="全屏编辑"
+              />
+            </div>
           </Form.Item>
         </>
       ),
@@ -485,6 +520,38 @@ const CreateModal: React.FC<CreateModalProps> = ({
       >
         <Tabs items={tabItems} />
       </Form>
+      
+      {/* 全屏编辑系统提示词弹窗 */}
+      <Modal
+        title="编辑系统提示词"
+        open={fullScreenPromptOpen}
+        onOk={handlePromptSave}
+        onCancel={handlePromptCancel}
+        width="80%"
+        height="80%"
+        styles={{
+          body: {
+            height: '70vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+        okText="保存"
+        cancelText="取消"
+      >
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ marginBottom: 12, color: '#666' }}>
+            在此处编辑Agent的系统提示词，定义其角色和行为规范
+          </div>
+          <TextArea
+            value={currentPromptValue}
+            onChange={(e) => setCurrentPromptValue(e.target.value)}
+            placeholder="请输入系统提示词..."
+            style={{ flex: 1, resize: 'none' }}
+            autoFocus
+          />
+        </div>
+      </Modal>
     </Modal>
   );
 };

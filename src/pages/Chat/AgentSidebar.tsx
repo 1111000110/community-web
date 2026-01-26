@@ -15,6 +15,7 @@ import {
   message,
   Collapse,
   Tooltip,
+  Modal,
 } from 'antd';
 import {
   RobotOutlined,
@@ -22,6 +23,7 @@ import {
   EditOutlined,
   SaveOutlined,
   CloseOutlined,
+  ExpandOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { updateAgent } from '../../api/agent';
@@ -106,6 +108,8 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [changes, setChanges] = useState<ChangeItem[]>([]);
   const [pendingData, setPendingData] = useState<UpdateAgentReq | null>(null);
+  const [fullScreenPromptOpen, setFullScreenPromptOpen] = useState(false);
+  const [currentPromptValue, setCurrentPromptValue] = useState('');
   const queryClient = useQueryClient();
 
   // 在编辑模式下获取LLM列表
@@ -242,17 +246,28 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
       });
     }
 
-    // 数组字段
+    // 数组字段比较 - 修复工具字段比较逻辑
     const oldStop = config.stop?.join(', ') || '';
     const newStop = values.stop as string || '';
     if (oldStop !== newStop) {
       changeList.push({ field: 'stop', label: fieldLabels.stop, oldValue: oldStop || '-', newValue: newStop || '-' });
     }
 
-    const oldTools = config.enable_tools?.join(', ') || '';
-    const newTools = values.enable_tools as string || '';
-    if (oldTools !== newTools) {
-      changeList.push({ field: 'enable_tools', label: fieldLabels.enable_tools, oldValue: oldTools || '-', newValue: newTools || '-' });
+    // 修复工具字段比较逻辑 - 使用数组比较
+    const oldToolsArray = config.enable_tools || [];
+    const newToolsArray = Array.isArray(values.enable_tools) ? values.enable_tools : [];
+    
+    // 比较数组内容是否相同
+    const arraysEqual = oldToolsArray.length === newToolsArray.length && 
+      oldToolsArray.every((item, index) => item === newToolsArray[index]);
+    
+    if (!arraysEqual) {
+      changeList.push({ 
+        field: 'enable_tools', 
+        label: fieldLabels.enable_tools, 
+        oldValue: oldToolsArray.length > 0 ? oldToolsArray.join(', ') : '-', 
+        newValue: newToolsArray.length > 0 ? newToolsArray.join(', ') : '-' 
+      });
     }
 
     // 工具配置变更检测
@@ -361,6 +376,22 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
     if (pendingData) {
       updateMutation.mutate(pendingData);
     }
+  };
+
+  // 全屏编辑系统提示词
+  const handleFullScreenPrompt = () => {
+    const currentValue = form.getFieldValue('system_prompt') || '';
+    setCurrentPromptValue(currentValue);
+    setFullScreenPromptOpen(true);
+  };
+
+  const handlePromptSave = () => {
+    form.setFieldValue('system_prompt', currentPromptValue);
+    setFullScreenPromptOpen(false);
+  };
+
+  const handlePromptCancel = () => {
+    setFullScreenPromptOpen(false);
   };
 
   const handleCancelEdit = () => {
@@ -477,22 +508,39 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
       <Text strong style={{ fontSize: 13, color: mutedColor, display: 'block', marginBottom: 12 }}>
         系统提示词
       </Text>
-      <Paragraph
-        style={{
-          fontSize: 13,
-          color: isDark ? 'rgba(255, 255, 255, 0.85)' : '#333',
-          whiteSpace: 'pre-wrap',
-          marginBottom: 0,
-          background: subtleBg,
-          padding: 12,
-          borderRadius: 8,
-          maxHeight: 200,
-          overflow: 'auto',
-          border: `1px solid ${borderColor}`,
-        }}
-      >
-        {config.system_prompt || '-'}
-      </Paragraph>
+      <div style={{ position: 'relative' }}>
+        <Paragraph
+          style={{
+            fontSize: 13,
+            color: isDark ? 'rgba(255, 255, 255, 0.85)' : '#333',
+            whiteSpace: 'pre-wrap',
+            marginBottom: 0,
+            background: subtleBg,
+            padding: 12,
+            borderRadius: 8,
+            maxHeight: 200,
+            overflow: 'auto',
+            border: `1px solid ${borderColor}`,
+          }}
+        >
+          {config.system_prompt || '-'}
+        </Paragraph>
+        <Button
+          type="text"
+          icon={<ExpandOutlined />}
+          onClick={handleFullScreenPrompt}
+          style={{
+            position: 'absolute',
+            right: 8,
+            top: 8,
+            zIndex: 2,
+            color: '#1890ff',
+            background: isDark ? 'rgba(26, 35, 50, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(4px)',
+          }}
+          title="全屏编辑"
+        />
+      </div>
     </div>
   );
 
@@ -678,9 +726,30 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
             key: 'prompt',
             label: <Text strong style={{ color: mutedColor }}>系统提示词</Text>,
             children: (
-              <Form.Item name="system_prompt">
-                <TextArea rows={6} placeholder="系统提示词" />
-              </Form.Item>
+              <div style={{ position: 'relative' }}>
+                <Form.Item name="system_prompt">
+                  <TextArea 
+                    rows={6} 
+                    placeholder="系统提示词" 
+                    defaultValue={config.system_prompt || ''}
+                  />
+                </Form.Item>
+                <Button
+                  type="text"
+                  icon={<ExpandOutlined />}
+                  onClick={handleFullScreenPrompt}
+                  style={{
+                    position: 'absolute',
+                    right: 8,
+                    top: 8,
+                    zIndex: 2,
+                    color: '#1890ff',
+                    background: isDark ? 'rgba(26, 35, 50, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+                    backdropFilter: 'blur(4px)',
+                  }}
+                  title="全屏编辑"
+                />
+              </div>
             ),
           },
         ]}
@@ -746,6 +815,42 @@ const AgentSidebar: React.FC<AgentSidebarProps> = ({
         {/* 内容区域 */}
         {isEditing ? <EditContent /> : <ViewContent />}
       </Sider>
+
+      {/* 全屏编辑系统提示词弹窗 */}
+      <Modal
+        title="编辑系统提示词"
+        open={fullScreenPromptOpen}
+        onOk={handlePromptSave}
+        onCancel={handlePromptCancel}
+        width="80%"
+        styles={{
+          body: {
+            height: '70vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+        okText="保存"
+        cancelText="取消"
+      >
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ marginBottom: 12, color: isDark ? 'rgba(255, 255, 255, 0.65)' : '#666' }}>
+            在此处编辑Agent的系统提示词，定义其角色和行为规范
+          </div>
+          <TextArea
+            value={currentPromptValue}
+            onChange={(e) => setCurrentPromptValue(e.target.value)}
+            placeholder="请输入系统提示词..."
+            style={{ 
+              flex: 1, 
+              resize: 'none',
+              background: isDark ? '#1a2332' : '#fff',
+              color: isDark ? 'rgba(255, 255, 255, 0.85)' : '#000'
+            }}
+            autoFocus
+          />
+        </div>
+      </Modal>
 
       <ChangeConfirmModal
         open={confirmOpen}

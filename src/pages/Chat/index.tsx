@@ -11,6 +11,8 @@ import {
   Empty,
   Tooltip,
   theme,
+  Switch,
+  Tag,
 } from 'antd';
 import {
   SendOutlined,
@@ -18,12 +20,16 @@ import {
   UserOutlined,
   SunOutlined,
   MoonOutlined,
+  ThunderboltOutlined,
+  ToolOutlined,
+  CheckCircleOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
-import { getAgentList, runAgent } from '../../api/agent';
-import type { AgentMessageDetail } from '../../types/agent';
+import { getAgentList, runAgent, runAgentStream } from '../../api/agent';
+import type { AgentMessageDetail, RunAgentStreamResp } from '../../types/agent';
 import { useTheme } from '../../contexts/ThemeContext';
 import AgentSidebar from './AgentSidebar';
 
@@ -35,6 +41,13 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   reasoning?: string;
+  toolCalls?: {
+    id: string;
+    name: string;
+    arguments: string;
+    result?: string;
+  }[];
+  toolResult?: string;
 }
 
 const ChatPage: React.FC = () => {
@@ -44,7 +57,218 @@ const ChatPage: React.FC = () => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [sessionId] = useState(() => `session_${Date.now()}`);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamEnabled, setStreamEnabled] = useState(true); // 默认开启流式
+  const eventSourceRef = useRef<EventSource | import('../../api/agent').StreamClient | null>(null);
+  const assistantMessageRef = useRef<{
+    content: string;
+    reasoning: string;
+    toolCalls: Record<string, { id: string; name: string; arguments: string }>;
+  }>({ content: '', reasoning: '', toolCalls: {} });
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 清理事件源连接
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
+
+  // 滚动到底部
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // 处理流式响应
+  const handleStreamResponse = (data: RunAgentStreamResp) => {
+    try {
+      switch (data.type) {
+        case 'message_start':
+          // 消息开始
+          console.log('Stream started');
+          break;
+        case 'content':
+          // 内容块
+          const contentData = JSON.parse(data.data);
+          assistantMessageRef.current.content += contentData.content;
+          
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              // 更新最后一条助手消息
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1] = {
+                ...lastMsg,
+                content: assistantMessageRef.current.content,
+              };
+              return newMessages;
+            } else {
+              // 添加新消息
+              return [
+                ...prev,
+                {
+                  role: 'assistant',
+                  content: assistantMessageRef.current.content,
+                },
+              ];
+            }
+          });
+          break;
+        case 'reasoning':
+          // 推理内容
+          const reasoningData = JSON.parse(data.data);
+          assistantMessageRef.current.reasoning += reasoningData.content;
+          
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1] = {
+                ...lastMsg,
+                reasoning: assistantMessageRef.current.reasoning,
+              };
+              return newMessages;
+            } else {
+              return [
+                ...prev,
+                {
+                  role: 'assistant',
+                  content: '',
+                  reasoning: assistantMessageRef.current.reasoning,
+                },
+              ];
+            }
+          });
+          break;
+        case 'tool_call':
+        case 'tool_call_chunk':
+          // 工具调用
+          const toolCallData = JSON.parse(data.data);
+          // 兼容 tool_call 和 tool_call_chunk
+          const tool_id = toolCallData.tool_id;
+          const name = toolCallData.name || toolCallData.tool_name;
+          // tool_call 使用 arguments, tool_call_chunk 使用 args_chunk
+          const args = toolCallData.arguments || toolCallData.args_chunk || '';
+          
+          if (!assistantMessageRef.current.toolCalls[tool_id]) {
+            assistantMessageRef.current.toolCalls[tool_id] = {
+              id: tool_id,
+              name: name || '', // tool_call_chunk 可能在后续包中才包含 name，但通常第一个包会有
+              arguments: '',
+            };
+          }
+          
+          // 如果是新的名字（之前可能为空），更新名字
+          if (name && !assistantMessageRef.current.toolCalls[tool_id].name) {
+            assistantMessageRef.current.toolCalls[tool_id].name = name;
+          }
+          
+          assistantMessageRef.current.toolCalls[tool_id].arguments += args;
+          
+          setMessages(prev => {
+            const lastMsg = prev[prev.length - 1];
+            const currentToolCalls = Object.values(assistantMessageRef.current.toolCalls);
+            
+            if (lastMsg && lastMsg.role === 'assistant') {
+              const newMessages = [...prev];
+              newMessages[newMessages.length - 1] = {
+                ...lastMsg,
+                toolCalls: currentToolCalls,
+              };
+              return newMessages;
+            } else {
+              return [
+                ...prev,
+                {
+                  role: 'assistant',
+                  content: '',
+                  toolCalls: currentToolCalls,
+                },
+              ];
+            }
+          });
+          break;
+        case 'tool_result':
+          // 工具结果
+          const toolData = JSON.parse(data.data);
+          
+          setMessages(prev => {
+            // 找到包含对应工具调用的消息并更新结果
+            // 注意：这里简化处理，假设工具结果总是对应最后一条消息中的工具调用
+            // 实际情况可能需要根据 id 匹配，但目前 tool_result 没有返回 id
+            // 我们可以尝试更新最后一条消息的 toolResult 字段，或者更新 toolCalls 中的 result
+            
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.toolCalls) {
+              const newMessages = [...prev];
+              const updatedToolCalls = lastMsg.toolCalls.map(call => {
+                if (call.name === toolData.tool_name) {
+                  return { ...call, result: toolData.result };
+                }
+                return call;
+              });
+              
+              newMessages[newMessages.length - 1] = {
+                ...lastMsg,
+                toolCalls: updatedToolCalls,
+              };
+              return newMessages;
+            } else {
+              // 兼容旧逻辑
+              return [
+                ...prev,
+                {
+                  role: 'assistant',
+                  content: '',
+                  toolResult: `工具 ${toolData.tool_name} 执行结果: ${toolData.result}`,
+                },
+              ];
+            }
+          });
+          break;
+        case 'message_end':
+          // 消息结束
+          setIsStreaming(false);
+          eventSourceRef.current?.close();
+          eventSourceRef.current = null;
+          // 重置助手消息引用
+          assistantMessageRef.current = { content: '', reasoning: '', toolCalls: {} };
+          break;
+        case 'error':
+          // 错误
+          const errorData = JSON.parse(data.data);
+          setMessages(prev => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: `错误: ${errorData.message}`,
+            },
+          ]);
+          setIsStreaming(false);
+          eventSourceRef.current?.close();
+          eventSourceRef.current = null;
+          break;
+      }
+    } catch (error) {
+      console.error('Error parsing stream data:', error);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: `数据解析错误: ${(error as Error).message}`,
+        },
+      ]);
+      setIsStreaming(false);
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    }
+  };
 
   // 获取Agent信息（优先使用缓存，但允许读取最新数据）
   const { data: agentListData } = useQuery({
@@ -63,15 +287,6 @@ const ChatPage: React.FC = () => {
     ...agentRecord.agent_detail,
     llm_info: agentRecord.llm_detail,
   } : null;
-
-  // 滚动到底部
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
 
   const runMutation = useMutation({
     mutationFn: runAgent,
@@ -93,20 +308,80 @@ const ChatPage: React.FC = () => {
     const userMessage: ChatMessage = { role: 'user', content: input };
     setMessages((prev) => [...prev, userMessage]);
 
-    const agentMessage: AgentMessageDetail = {
-      agent_id: agent.agent_id,
-      agent_session_id: sessionId,
-      message_agent_session_id: sessionId,
-      role: 'user',
-      message_type: 0,
-      message_content: input,
-    };
+    if (streamEnabled) {
+      // 使用流式API
+      setIsStreaming(true);
+      assistantMessageRef.current = { content: '', reasoning: '', toolCalls: {} };
 
-    runMutation.mutate({
-      agent_id: agent.agent_id,
-      api_key: agent.api_key || '',
-      agent_message: agentMessage,
-    });
+      const agentMessage: AgentMessageDetail = {
+        agent_id: agent.agent_id,
+        agent_session_id: sessionId,
+        message_agent_session_id: sessionId,
+        role: 'user',
+        message_type: 0,
+        message_content: input,
+      };
+
+      // 关闭之前的连接
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      // 创建新的 SSE 连接
+      const eventSource = runAgentStream({
+        agent_id: agent.agent_id,
+        api_key: agent.api_key || '',
+        agent_message: agentMessage,
+      });
+
+      eventSourceRef.current = eventSource;
+
+      // 使用自定义的 StreamClient
+      eventSource.addEventListener('message', (data) => {
+        try {
+          const parsedData: RunAgentStreamResp = typeof data === 'string' ? JSON.parse(data) : data;
+          handleStreamResponse(parsedData);
+        } catch (error) {
+          console.error('Error parsing SSE message:', error);
+        }
+      });
+
+      eventSource.addEventListener('error', (error) => {
+        console.error('SSE error:', error);
+        setIsStreaming(false);
+        eventSource.close();
+        eventSourceRef.current = null;
+      });
+
+      // 监听连接关闭事件
+      eventSource.addEventListener('close', () => {
+        console.log('Stream connection closed');
+        setIsStreaming(false);
+        eventSourceRef.current = null;
+      });
+
+      // 如果 StreamClient 支持 close 事件，监听流完成
+      if (typeof eventSource.addEventListener === 'function') {
+        // 当流结束时，也会触发完成处理
+        eventSourceRef.current = eventSource;
+      }
+    } else {
+      // 使用传统API
+      const agentMessage: AgentMessageDetail = {
+        agent_id: agent.agent_id,
+        agent_session_id: sessionId,
+        message_agent_session_id: sessionId,
+        role: 'user',
+        message_type: 0,
+        message_content: input,
+      };
+
+      runMutation.mutate({
+        agent_id: agent.agent_id,
+        api_key: agent.api_key || '',
+        agent_message: agentMessage,
+      });
+    }
 
     setInput('');
   };
@@ -170,6 +445,18 @@ const ChatPage: React.FC = () => {
             <Title level={5} style={{ margin: 0 }}>
               与 {agent.name} 对话
             </Title>
+          </Space>
+          <Space size="small">
+            <Tag icon={<ThunderboltOutlined />} color={streamEnabled ? 'orange' : 'default'}>
+              流式返回
+            </Tag>
+            <Switch
+              checked={streamEnabled}
+              onChange={setStreamEnabled}
+              checkedChildren="开启"
+              unCheckedChildren="关闭"
+              disabled={runMutation.isPending || isStreaming}
+            />
           </Space>
           <Tooltip title={isDark ? '切换到白天模式' : '切换到黑夜模式'}>
             <Button
@@ -289,11 +576,108 @@ const ChatPage: React.FC = () => {
                             </Paragraph>
                           </Card>
                         )}
+                        {msg.toolCalls && msg.toolCalls.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            {msg.toolCalls.map((toolCall) => (
+                              <Card
+                                key={toolCall.id}
+                                size="small"
+                                style={{
+                                  marginBottom: 8,
+                                  background: isDark ? 'rgba(250, 173, 20, 0.1)' : '#fffbe6',
+                                  border: `1px solid ${isDark ? 'rgba(250, 173, 20, 0.3)' : '#ffe58f'}`,
+                                  borderRadius: 8,
+                                }}
+                              >
+                                <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
+                                  <Space direction="vertical" size={0}>
+                                    <Space>
+                                      <ToolOutlined style={{ color: '#faad14' }} />
+                                      <Text strong style={{ fontSize: 13 }}>
+                                        调用工具: {toolCall.name}
+                                      </Text>
+                                      {toolCall.result ? (
+                                        <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>
+                                          完成
+                                        </Tag>
+                                      ) : (
+                                        <Tag icon={<LoadingOutlined />} color="processing" style={{ margin: 0 }}>
+                                          执行中
+                                        </Tag>
+                                      )}
+                                    </Space>
+                                    <div style={{ marginTop: 8 }}>
+                                      <Text type="secondary" style={{ fontSize: 12 }}>参数:</Text>
+                                      <div 
+                                        style={{ 
+                                          background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0,0,0,0.02)', 
+                                          padding: '4px 8px', 
+                                          borderRadius: 4,
+                                          fontSize: 12,
+                                          fontFamily: 'monospace',
+                                          marginTop: 4,
+                                          whiteSpace: 'pre-wrap',
+                                          wordBreak: 'break-all',
+                                          color: isDark ? 'rgba(255, 255, 255, 0.85)' : 'inherit'
+                                        }}
+                                      >
+                                        {toolCall.arguments}
+                                      </div>
+                                    </div>
+                                    {toolCall.result && (
+                                      <div style={{ marginTop: 8 }}>
+                                        <Text type="secondary" style={{ fontSize: 12 }}>结果:</Text>
+                                        <div 
+                                          style={{ 
+                                            background: isDark ? 'rgba(82, 196, 26, 0.15)' : 'rgba(82, 196, 26, 0.1)', 
+                                            padding: '4px 8px', 
+                                            borderRadius: 4,
+                                            fontSize: 12,
+                                            fontFamily: 'monospace',
+                                            marginTop: 4,
+                                            whiteSpace: 'pre-wrap',
+                                            wordBreak: 'break-all',
+                                            maxHeight: 200,
+                                            overflow: 'auto',
+                                            color: isDark ? 'rgba(255, 255, 255, 0.85)' : 'inherit'
+                                          }}
+                                        >
+                                          {toolCall.result}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </Space>
+                                </Space>
+                              </Card>
+                            ))}
+                          </div>
+                        )}
+                        {msg.toolResult && (
+                          <Card
+                            size="small"
+                            style={{
+                              marginTop: 8,
+                              background: '#fffbe6',
+                              border: `1px solid #ffe58f`,
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Text type="warning" style={{ fontSize: 12 }}>
+                              🛠️ 工具执行结果
+                            </Text>
+                            <Paragraph
+                              type="warning"
+                              style={{ fontSize: 13, marginBottom: 0, marginTop: 4 }}
+                            >
+                              {msg.toolResult}
+                            </Paragraph>
+                          </Card>
+                        )}
                       </div>
                     </div>
                   </div>
                 ))}
-                {runMutation.isPending && (
+                {(runMutation.isPending || (isStreaming && messages[messages.length - 1]?.role !== 'assistant')) && (
                   <div style={{ display: 'flex', gap: 12 }}>
                     <Avatar
                       icon={<RobotOutlined />}
@@ -311,7 +695,7 @@ const ChatPage: React.FC = () => {
                     >
                       <Space>
                         <Spin size="small" />
-                        <Text type="secondary">思考中...</Text>
+                        <Text type="secondary">{isStreaming ? '流式接收中...' : '思考中...'}</Text>
                       </Space>
                     </Card>
                   </div>
@@ -347,17 +731,26 @@ const ChatPage: React.FC = () => {
                     handleSend();
                   }
                 }}
+                disabled={runMutation.isPending || isStreaming}
               />
               <Button
                 type="primary"
                 icon={<SendOutlined />}
                 onClick={handleSend}
-                loading={runMutation.isPending}
+                loading={runMutation.isPending || isStreaming}
+                disabled={(!input.trim() && !runMutation.isPending && !isStreaming)}
                 style={{ height: 'auto', borderRadius: '0 8px 8px 0', minWidth: 80 }}
               >
                 发送
               </Button>
             </Space.Compact>
+            <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+              {streamEnabled ? (
+                <Text type="warning">流式模式：实时接收AI生成内容</Text>
+              ) : (
+                <Text type="secondary">普通模式：等待AI完整回复</Text>
+              )}
+            </div>
           </div>
         </div>
       </Layout>
