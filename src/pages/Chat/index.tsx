@@ -24,6 +24,8 @@ import {
   ToolOutlined,
   CheckCircleOutlined,
   LoadingOutlined,
+  CaretRightOutlined,
+  CaretDownOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -50,6 +52,267 @@ interface ChatMessage {
   toolResult?: string;
 }
 
+const MessageItem: React.FC<{
+  msg: ChatMessage;
+  agent: any;
+  isDark: boolean;
+  bgColor: string;
+  borderColor: string;
+  subtleBg: string;
+}> = ({ msg, agent, isDark, bgColor, borderColor, subtleBg }) => {
+  // 如果已经有内容，默认折叠思考和工具；如果是新生成的消息（一开始没内容），则默认展开，等内容生成时再自动折叠
+  const [isReasoningExpanded, setIsReasoningExpanded] = useState(!msg.content);
+  const [isToolsExpanded, setIsToolsExpanded] = useState(!msg.content);
+  const hasContentRef = useRef(!!msg.content);
+
+  useEffect(() => {
+    // 当内容开始生成时（从无到有），自动折叠思考和工具
+    if (!hasContentRef.current && msg.content) {
+      setIsReasoningExpanded(false);
+      setIsToolsExpanded(false);
+      hasContentRef.current = true;
+    }
+  }, [msg.content]);
+
+  const renderReasoning = () => {
+    if (!msg.reasoning) return null;
+    return (
+      <Card
+        size="small"
+        style={{
+          marginBottom: 8,
+          background: subtleBg,
+          border: `1px dashed ${borderColor}`,
+          borderRadius: 8,
+        }}
+        styles={{
+          body: { padding: '8px 12px' }
+        }}
+      >
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            cursor: 'pointer',
+            marginBottom: isReasoningExpanded ? 8 : 0
+          }}
+          onClick={() => setIsReasoningExpanded(!isReasoningExpanded)}
+        >
+          {isReasoningExpanded ? <CaretDownOutlined style={{ fontSize: 10, marginRight: 6 }} /> : <CaretRightOutlined style={{ fontSize: 10, marginRight: 6 }} />}
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            💭 思考过程
+          </Text>
+        </div>
+        {isReasoningExpanded && (
+          <Paragraph
+            type="secondary"
+            style={{ fontSize: 13, marginBottom: 0 }}
+          >
+            {msg.reasoning}
+          </Paragraph>
+        )}
+      </Card>
+    );
+  };
+
+  const renderTools = () => {
+    if (!msg.toolCalls || msg.toolCalls.length === 0) return null;
+    return (
+      <div style={{ marginBottom: 8 }}>
+        <div 
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            cursor: 'pointer',
+            marginBottom: 8
+          }}
+          onClick={() => setIsToolsExpanded(!isToolsExpanded)}
+        >
+          {isToolsExpanded ? <CaretDownOutlined style={{ fontSize: 10, marginRight: 6 }} /> : <CaretRightOutlined style={{ fontSize: 10, marginRight: 6 }} />}
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            🛠️ 工具调用 ({msg.toolCalls.length})
+          </Text>
+        </div>
+        
+        {isToolsExpanded && msg.toolCalls.map((toolCall) => (
+          <Card
+            key={toolCall.id}
+            size="small"
+            style={{
+              marginBottom: 8,
+              background: isDark ? 'rgba(250, 173, 20, 0.1)' : '#fffbe6',
+              border: `1px solid ${isDark ? 'rgba(250, 173, 20, 0.3)' : '#ffe58f'}`,
+              borderRadius: 8,
+            }}
+          >
+            <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Space direction="vertical" size={0} style={{ width: '100%' }}>
+                <Space>
+                  <ToolOutlined style={{ color: '#faad14' }} />
+                  <Text strong style={{ fontSize: 13 }}>
+                    调用工具: {toolCall.name}
+                  </Text>
+                  {toolCall.result ? (
+                    <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>
+                      完成
+                    </Tag>
+                  ) : (
+                    <Tag icon={<LoadingOutlined />} color="processing" style={{ margin: 0 }}>
+                      执行中
+                    </Tag>
+                  )}
+                </Space>
+                <div style={{ marginTop: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>参数:</Text>
+                  <div 
+                    style={{ 
+                      background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0,0,0,0.02)', 
+                      padding: '4px 8px', 
+                      borderRadius: 4,
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      marginTop: 4,
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      color: isDark ? 'rgba(255, 255, 255, 0.85)' : 'inherit'
+                    }}
+                  >
+                    {toolCall.arguments}
+                  </div>
+                </div>
+                {toolCall.result && (
+                  <div style={{ marginTop: 8 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>结果:</Text>
+                    <div 
+                      style={{ 
+                        background: isDark ? 'rgba(82, 196, 26, 0.15)' : 'rgba(82, 196, 26, 0.1)', 
+                        padding: '4px 8px', 
+                        borderRadius: 4,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        marginTop: 4,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-all',
+                        maxHeight: 200,
+                        overflow: 'auto',
+                        color: isDark ? 'rgba(255, 255, 255, 0.85)' : 'inherit'
+                      }}
+                    >
+                      {toolCall.result}
+                    </div>
+                  </div>
+                )}
+              </Space>
+            </Space>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  const renderToolResult = () => {
+    if (!msg.toolResult) return null;
+    return (
+      <Card
+        size="small"
+        style={{
+          marginTop: 8,
+          background: '#fffbe6',
+          border: `1px solid #ffe58f`,
+          borderRadius: 8,
+        }}
+      >
+        <Text type="warning" style={{ fontSize: 12 }}>
+          🛠️ 工具执行结果
+        </Text>
+        <Paragraph
+          type="warning"
+          style={{ fontSize: 13, marginBottom: 0, marginTop: 4 }}
+        >
+          {msg.toolResult}
+        </Paragraph>
+      </Card>
+    );
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          gap: 12,
+          maxWidth: '85%',
+          flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+        }}
+      >
+        <Avatar
+          icon={msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
+          src={msg.role === 'assistant' ? agent.icon : undefined}
+          style={{
+            backgroundColor: msg.role === 'user' ? '#1677ff' : '#52c41a',
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ minWidth: 0, width: '100%' }}>
+          <Text
+            type="secondary"
+            style={{
+              fontSize: 12,
+              display: 'block',
+              marginBottom: 4,
+              textAlign: msg.role === 'user' ? 'right' : 'left',
+            }}
+          >
+            {msg.role === 'user' ? '你' : agent.name}
+          </Text>
+          
+          {/* Assistant 消息顺序：思考 -> 工具 -> 回答 */}
+          {msg.role === 'assistant' && (
+            <>
+              {renderReasoning()}
+              {renderTools()}
+              {renderToolResult()}
+            </>
+          )}
+
+          {/* User 消息直接显示，Assistant 消息显示内容 */}
+          {(msg.role === 'user' || msg.content) && (
+            <Card
+              size="small"
+              style={{
+                background: msg.role === 'user' ? '#1677ff' : bgColor,
+                border: msg.role === 'user' ? 'none' : `1px solid ${borderColor}`,
+                borderRadius: 12,
+                borderTopRightRadius: msg.role === 'user' ? 4 : 12,
+                borderTopLeftRadius: msg.role === 'user' ? 12 : 4,
+                boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
+              }}
+              styles={{
+                body: {
+                  color: msg.role === 'user' ? '#fff' : 'inherit',
+                },
+              }}
+            >
+              {msg.role === 'user' ? (
+                <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
+              ) : (
+                <div className="markdown-body">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              )}
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ChatPage: React.FC = () => {
   const navigate = useNavigate();
   const { agentId } = useParams<{ agentId: string }>();
@@ -63,7 +326,7 @@ const ChatPage: React.FC = () => {
   const assistantMessageRef = useRef<{
     content: string;
     reasoning: string;
-    toolCalls: Record<string, { id: string; name: string; arguments: string }>;
+    toolCalls: Record<string, { id: string; name: string; arguments: string; result?: string }>;
   }>({ content: '', reasoning: '', toolCalls: {} });
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -198,28 +461,42 @@ const ChatPage: React.FC = () => {
           // 工具结果
           const toolData = JSON.parse(data.data);
           
-          setMessages(prev => {
-            // 找到包含对应工具调用的消息并更新结果
-            // 注意：这里简化处理，假设工具结果总是对应最后一条消息中的工具调用
-            // 实际情况可能需要根据 id 匹配，但目前 tool_result 没有返回 id
-            // 我们可以尝试更新最后一条消息的 toolResult 字段，或者更新 toolCalls 中的 result
+          // 尝试获取 ID (支持多种可能的字段名)
+          const toolResultId = toolData.tool_id || toolData.id || toolData.tool_call_id;
+          
+          // 1. 更新 assistantMessageRef 中的数据，确保后续的 tool_call 不会覆盖结果
+          let targetTool = null;
+          const toolCallsMap = assistantMessageRef.current.toolCalls;
+          
+          if (toolResultId && toolCallsMap[toolResultId]) {
+            targetTool = toolCallsMap[toolResultId];
+          } else {
+             // 如果没有 ID 或按 ID 没找到，尝试按名称匹配
+             // 关键修复：找到第一个名称匹配且还没有结果的工具调用
+             const tools = Object.values(toolCallsMap);
+             targetTool = tools.find(t => t.name === toolData.tool_name && !t.result);
+             
+             if (!targetTool) {
+               // 回退到查找最后一个同名的
+               targetTool = [...tools].reverse().find(t => t.name === toolData.tool_name);
+             }
+          }
+          
+          if (targetTool) {
+            targetTool.result = toolData.result;
             
-            const lastMsg = prev[prev.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.toolCalls) {
-              const newMessages = [...prev];
-              const updatedToolCalls = lastMsg.toolCalls.map(call => {
-                if (call.name === toolData.tool_name) {
-                  return { ...call, result: toolData.result };
-                }
-                return call;
-              });
-              
-              newMessages[newMessages.length - 1] = {
-                ...lastMsg,
-                toolCalls: updatedToolCalls,
-              };
-              return newMessages;
-            } else {
+            // 2. 同步更新到 messages 状态
+            setMessages(prev => {
+              const lastMsg = prev[prev.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant') {
+                const newMessages = [...prev];
+                newMessages[newMessages.length - 1] = {
+                  ...lastMsg,
+                  // 直接使用 assistantMessageRef 中的最新数据
+                  toolCalls: Object.values(assistantMessageRef.current.toolCalls),
+                };
+                return newMessages;
+              }
               // 兼容旧逻辑
               return [
                 ...prev,
@@ -229,8 +506,8 @@ const ChatPage: React.FC = () => {
                   toolResult: `工具 ${toolData.tool_name} 执行结果: ${toolData.result}`,
                 },
               ];
-            }
-          });
+            });
+          }
           break;
         case 'message_end':
           // 消息结束
@@ -496,186 +773,15 @@ const ChatPage: React.FC = () => {
             ) : (
               <Space direction="vertical" style={{ width: '100%' }} size="large">
                 {messages.map((msg, index) => (
-                  <div
+                  <MessageItem
                     key={index}
-                    style={{
-                      display: 'flex',
-                      justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: 12,
-                        maxWidth: '85%',
-                        flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
-                      }}
-                    >
-                      <Avatar
-                        icon={msg.role === 'user' ? <UserOutlined /> : <RobotOutlined />}
-                        src={msg.role === 'assistant' ? agent.icon : undefined}
-                        style={{
-                          backgroundColor: msg.role === 'user' ? '#1677ff' : '#52c41a',
-                          flexShrink: 0,
-                        }}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <Text
-                          type="secondary"
-                          style={{
-                            fontSize: 12,
-                            display: 'block',
-                            marginBottom: 4,
-                            textAlign: msg.role === 'user' ? 'right' : 'left',
-                          }}
-                        >
-                          {msg.role === 'user' ? '你' : agent.name}
-                        </Text>
-                        <Card
-                          size="small"
-                          style={{
-                            background: msg.role === 'user' ? '#1677ff' : bgColor,
-                            border: msg.role === 'user' ? 'none' : `1px solid ${borderColor}`,
-                            borderRadius: 12,
-                            borderTopRightRadius: msg.role === 'user' ? 4 : 12,
-                            borderTopLeftRadius: msg.role === 'user' ? 12 : 4,
-                            boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.06)',
-                          }}
-                          styles={{
-                            body: {
-                              color: msg.role === 'user' ? '#fff' : 'inherit',
-                            },
-                          }}
-                        >
-                          {msg.role === 'user' ? (
-                            <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                          ) : (
-                            <div className="markdown-body">
-                              <ReactMarkdown>{msg.content}</ReactMarkdown>
-                            </div>
-                          )}
-                        </Card>
-                        {msg.reasoning && (
-                          <Card
-                            size="small"
-                            style={{
-                              marginTop: 8,
-                              background: subtleBg,
-                              border: `1px dashed ${borderColor}`,
-                              borderRadius: 8,
-                            }}
-                          >
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                              💭 思考过程
-                            </Text>
-                            <Paragraph
-                              type="secondary"
-                              style={{ fontSize: 13, marginBottom: 0, marginTop: 4 }}
-                            >
-                              {msg.reasoning}
-                            </Paragraph>
-                          </Card>
-                        )}
-                        {msg.toolCalls && msg.toolCalls.length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            {msg.toolCalls.map((toolCall) => (
-                              <Card
-                                key={toolCall.id}
-                                size="small"
-                                style={{
-                                  marginBottom: 8,
-                                  background: isDark ? 'rgba(250, 173, 20, 0.1)' : '#fffbe6',
-                                  border: `1px solid ${isDark ? 'rgba(250, 173, 20, 0.3)' : '#ffe58f'}`,
-                                  borderRadius: 8,
-                                }}
-                              >
-                                <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
-                                  <Space direction="vertical" size={0}>
-                                    <Space>
-                                      <ToolOutlined style={{ color: '#faad14' }} />
-                                      <Text strong style={{ fontSize: 13 }}>
-                                        调用工具: {toolCall.name}
-                                      </Text>
-                                      {toolCall.result ? (
-                                        <Tag icon={<CheckCircleOutlined />} color="success" style={{ margin: 0 }}>
-                                          完成
-                                        </Tag>
-                                      ) : (
-                                        <Tag icon={<LoadingOutlined />} color="processing" style={{ margin: 0 }}>
-                                          执行中
-                                        </Tag>
-                                      )}
-                                    </Space>
-                                    <div style={{ marginTop: 8 }}>
-                                      <Text type="secondary" style={{ fontSize: 12 }}>参数:</Text>
-                                      <div 
-                                        style={{ 
-                                          background: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0,0,0,0.02)', 
-                                          padding: '4px 8px', 
-                                          borderRadius: 4,
-                                          fontSize: 12,
-                                          fontFamily: 'monospace',
-                                          marginTop: 4,
-                                          whiteSpace: 'pre-wrap',
-                                          wordBreak: 'break-all',
-                                          color: isDark ? 'rgba(255, 255, 255, 0.85)' : 'inherit'
-                                        }}
-                                      >
-                                        {toolCall.arguments}
-                                      </div>
-                                    </div>
-                                    {toolCall.result && (
-                                      <div style={{ marginTop: 8 }}>
-                                        <Text type="secondary" style={{ fontSize: 12 }}>结果:</Text>
-                                        <div 
-                                          style={{ 
-                                            background: isDark ? 'rgba(82, 196, 26, 0.15)' : 'rgba(82, 196, 26, 0.1)', 
-                                            padding: '4px 8px', 
-                                            borderRadius: 4,
-                                            fontSize: 12,
-                                            fontFamily: 'monospace',
-                                            marginTop: 4,
-                                            whiteSpace: 'pre-wrap',
-                                            wordBreak: 'break-all',
-                                            maxHeight: 200,
-                                            overflow: 'auto',
-                                            color: isDark ? 'rgba(255, 255, 255, 0.85)' : 'inherit'
-                                          }}
-                                        >
-                                          {toolCall.result}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </Space>
-                                </Space>
-                              </Card>
-                            ))}
-                          </div>
-                        )}
-                        {msg.toolResult && (
-                          <Card
-                            size="small"
-                            style={{
-                              marginTop: 8,
-                              background: '#fffbe6',
-                              border: `1px solid #ffe58f`,
-                              borderRadius: 8,
-                            }}
-                          >
-                            <Text type="warning" style={{ fontSize: 12 }}>
-                              🛠️ 工具执行结果
-                            </Text>
-                            <Paragraph
-                              type="warning"
-                              style={{ fontSize: 13, marginBottom: 0, marginTop: 4 }}
-                            >
-                              {msg.toolResult}
-                            </Paragraph>
-                          </Card>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                    msg={msg}
+                    agent={agent}
+                    isDark={isDark}
+                    bgColor={bgColor}
+                    borderColor={borderColor}
+                    subtleBg={subtleBg}
+                  />
                 ))}
                 {(runMutation.isPending || (isStreaming && messages[messages.length - 1]?.role !== 'assistant')) && (
                   <div style={{ display: 'flex', gap: 12 }}>
