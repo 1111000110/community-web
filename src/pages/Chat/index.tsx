@@ -13,6 +13,7 @@ import {
   theme,
   Switch,
   Tag,
+  Badge,
 } from 'antd';
 import {
   SendOutlined,
@@ -26,6 +27,7 @@ import {
   LoadingOutlined,
   CaretRightOutlined,
   CaretDownOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -34,6 +36,7 @@ import { getAgentList, runAgent, runAgentStream } from '../../api/agent';
 import type { AgentMessageDetail, RunAgentStreamResp } from '../../types/agent';
 import { useTheme } from '../../contexts/ThemeContext';
 import AgentSidebar from './AgentSidebar';
+import PromptReplacementModal from './PromptReplacementModal';
 
 const { Header, Content } = Layout;
 const { TextArea } = Input;
@@ -322,6 +325,8 @@ const ChatPage: React.FC = () => {
   const [sessionId] = useState(() => `session_${Date.now()}`);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamEnabled, setStreamEnabled] = useState(true); // 默认开启流式
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+  const [promptReplacement, setPromptReplacement] = useState<Record<string, string>>({});
   const eventSourceRef = useRef<EventSource | import('../../api/agent').StreamClient | null>(null);
   const assistantMessageRef = useRef<{
     content: string;
@@ -609,6 +614,7 @@ const ChatPage: React.FC = () => {
         agent_id: agent.agent_id,
         api_key: agent.api_key || '',
         agent_message: agentMessage,
+        prompt_replacement: promptReplacement,
       });
 
       eventSourceRef.current = eventSource;
@@ -657,6 +663,7 @@ const ChatPage: React.FC = () => {
         agent_id: agent.agent_id,
         api_key: agent.api_key || '',
         agent_message: agentMessage,
+        prompt_replacement: promptReplacement,
       });
     }
 
@@ -735,14 +742,26 @@ const ChatPage: React.FC = () => {
               disabled={runMutation.isPending || isStreaming}
             />
           </Space>
-          <Tooltip title={isDark ? '切换到白天模式' : '切换到黑夜模式'}>
-            <Button
-              type="text"
-              icon={isDark ? <SunOutlined /> : <MoonOutlined />}
-              onClick={toggleTheme}
-              style={{ fontSize: 18 }}
-            />
-          </Tooltip>
+          <Space>
+            <Tooltip title="Prompt 参数配置">
+              <Badge count={Object.keys(promptReplacement).length} size="small" offset={[-5, 5]}>
+                <Button
+                  type="text"
+                  icon={<SettingOutlined />}
+                  onClick={() => setIsSettingsVisible(true)}
+                  style={{ fontSize: 18 }}
+                />
+              </Badge>
+            </Tooltip>
+            <Tooltip title={isDark ? '切换到白天模式' : '切换到黑夜模式'}>
+              <Button
+                type="text"
+                icon={isDark ? <SunOutlined /> : <MoonOutlined />}
+                onClick={toggleTheme}
+                style={{ fontSize: 18 }}
+              />
+            </Tooltip>
+          </Space>
         </Header>
 
         {/* 消息区域 */}
@@ -860,6 +879,17 @@ const ChatPage: React.FC = () => {
           </div>
         </div>
       </Layout>
+
+      <PromptReplacementModal
+        visible={isSettingsVisible}
+        onCancel={() => setIsSettingsVisible(false)}
+        onOk={(values) => {
+          setPromptReplacement(values);
+          setIsSettingsVisible(false);
+        }}
+        initialValues={promptReplacement}
+        isDark={isDark}
+      />
     </Layout>
   );
 };

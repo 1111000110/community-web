@@ -104,6 +104,7 @@ export interface RunAgentReq {
   agent_id: number;
   api_key: string;
   agent_message: AgentMessageDetail;
+  prompt_replacement?: Record<string, string>;
 }
 
 export interface RunAgentResp {
@@ -130,6 +131,7 @@ export interface RunAgentStreamReq {
   agent_id: number;
   api_key: string;
   agent_message: AgentMessageDetail;
+  prompt_replacement?: Record<string, string>;
 }
 
 // 流式运行Agent响应类型
