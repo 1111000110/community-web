@@ -23,7 +23,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
 import { getAgentList, createAgent, deleteAgent } from '../../api/agent';
-import { getLlmList } from '../../api/llm';
 import type { AgentDetail, CreateAgentReq, LlmInfo } from '../../types/agent';
 import CreateModal from './CreateModal';
 import DetailModal from './DetailModal';
