@@ -46,11 +46,6 @@ const AgentPage: React.FC = () => {
     queryFn: () => getAgentList({ is_all: showAll }),
   });
 
-  // 获取LLM列表用于显示
-  const { data: llmData } = useQuery({
-    queryKey: ['llmList'],
-    queryFn: () => getLlmList(),
-  });
 
   // 每次列表数据更新后，同步更新通用缓存（不带 showAll 参数）
   // 这样 Chat 页面可以获取到最新的列表数据

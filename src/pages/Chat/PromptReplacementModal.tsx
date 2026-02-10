@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Modal, Form, Input, Button, Space, Typography } from 'antd';
 import { PlusOutlined, MinusCircleOutlined, SettingOutlined } from '@ant-design/icons';
 
@@ -43,9 +43,7 @@ const PromptReplacementModal: React.FC<PromptReplacementModalProps> = ({
     });
   };
 
-  const bgColor = isDark ? '#1f1f1f' : '#ffffff';
   const textColor = isDark ? '#ffffff' : '#000000';
-  const borderColor = isDark ? '#303030' : '#d9d9d9';
 
   return (
     <Modal

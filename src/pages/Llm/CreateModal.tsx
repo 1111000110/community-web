@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Form, Input, InputNumber, Select } from 'antd';
+import { Modal, Form, Input, Select } from 'antd';
 import type { CreateLlmReq } from '../../types/llm';
 
 const { TextArea } = Input;

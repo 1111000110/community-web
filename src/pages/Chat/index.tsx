@@ -10,7 +10,6 @@ import {
   Avatar,
   Empty,
   Tooltip,
-  theme,
   Switch,
   Tag,
   Badge,
