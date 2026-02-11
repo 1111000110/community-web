@@ -360,10 +360,12 @@ const ChatPage: React.FC = () => {
           // 消息开始
           console.log('Stream started');
           break;
-        case 'content':
+        case 'content': {
           // 内容块
           const contentData = JSON.parse(data.data);
           assistantMessageRef.current.content += contentData.content;
+          // 快照：防止 message_end 在 React 批量更新前清空 ref 导致内容丢失
+          const contentSnapshot = assistantMessageRef.current.content;
           
           setMessages(prev => {
             const lastMsg = prev[prev.length - 1];
@@ -372,7 +374,7 @@ const ChatPage: React.FC = () => {
               const newMessages = [...prev];
               newMessages[newMessages.length - 1] = {
                 ...lastMsg,
-                content: assistantMessageRef.current.content,
+                content: contentSnapshot,
               };
               return newMessages;
             } else {
@@ -381,16 +383,18 @@ const ChatPage: React.FC = () => {
                 ...prev,
                 {
                   role: 'assistant',
-                  content: assistantMessageRef.current.content,
+                  content: contentSnapshot,
                 },
               ];
             }
           });
           break;
-        case 'reasoning':
+        }
+        case 'reasoning': {
           // 推理内容
           const reasoningData = JSON.parse(data.data);
           assistantMessageRef.current.reasoning += reasoningData.content;
+          const reasoningSnapshot = assistantMessageRef.current.reasoning;
           
           setMessages(prev => {
             const lastMsg = prev[prev.length - 1];
@@ -398,7 +402,7 @@ const ChatPage: React.FC = () => {
               const newMessages = [...prev];
               newMessages[newMessages.length - 1] = {
                 ...lastMsg,
-                reasoning: assistantMessageRef.current.reasoning,
+                reasoning: reasoningSnapshot,
               };
               return newMessages;
             } else {
@@ -407,14 +411,15 @@ const ChatPage: React.FC = () => {
                 {
                   role: 'assistant',
                   content: '',
-                  reasoning: assistantMessageRef.current.reasoning,
+                  reasoning: reasoningSnapshot,
                 },
               ];
             }
           });
           break;
+        }
         case 'tool_call':
-        case 'tool_call_chunk':
+        case 'tool_call_chunk': {
           // 工具调用
           const toolCallData = JSON.parse(data.data);
           // 兼容 tool_call 和 tool_call_chunk
@@ -437,16 +442,16 @@ const ChatPage: React.FC = () => {
           }
           
           assistantMessageRef.current.toolCalls[tool_id].arguments += args;
+          const toolCallsSnapshot = Object.values(assistantMessageRef.current.toolCalls).map(tc => ({ ...tc }));
           
           setMessages(prev => {
             const lastMsg = prev[prev.length - 1];
-            const currentToolCalls = Object.values(assistantMessageRef.current.toolCalls);
             
             if (lastMsg && lastMsg.role === 'assistant') {
               const newMessages = [...prev];
               newMessages[newMessages.length - 1] = {
                 ...lastMsg,
-                toolCalls: currentToolCalls,
+                toolCalls: toolCallsSnapshot,
               };
               return newMessages;
             } else {
@@ -455,13 +460,14 @@ const ChatPage: React.FC = () => {
                 {
                   role: 'assistant',
                   content: '',
-                  toolCalls: currentToolCalls,
+                  toolCalls: toolCallsSnapshot,
                 },
               ];
             }
           });
           break;
-        case 'tool_result':
+        }
+        case 'tool_result': {
           // 工具结果
           const toolData = JSON.parse(data.data);
           
@@ -488,6 +494,7 @@ const ChatPage: React.FC = () => {
           
           if (targetTool) {
             targetTool.result = toolData.result;
+            const toolResultSnapshot = Object.values(assistantMessageRef.current.toolCalls).map(tc => ({ ...tc }));
             
             // 2. 同步更新到 messages 状态
             setMessages(prev => {
@@ -496,8 +503,7 @@ const ChatPage: React.FC = () => {
                 const newMessages = [...prev];
                 newMessages[newMessages.length - 1] = {
                   ...lastMsg,
-                  // 直接使用 assistantMessageRef 中的最新数据
-                  toolCalls: Object.values(assistantMessageRef.current.toolCalls),
+                  toolCalls: toolResultSnapshot,
                 };
                 return newMessages;
               }
@@ -513,6 +519,7 @@ const ChatPage: React.FC = () => {
             });
           }
           break;
+        }
         case 'message_end':
           // 消息结束
           setIsStreaming(false);
