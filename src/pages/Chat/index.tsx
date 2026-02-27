@@ -31,8 +31,9 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { getAgentList, runAgent, runAgentStream } from '../../api/agent';
-import type { AgentMessageDetail, RunAgentStreamResp } from '../../types/agent';
+import type { AgentMessageDetail, RunAgentStreamResp, AgentDetail, RunAgentResp, LlmInfo } from '../../types/agent';
 import { useTheme } from '../../contexts/ThemeContext';
 import AgentSidebar from './AgentSidebar';
 import PromptReplacementModal from './PromptReplacementModal';
@@ -304,7 +305,7 @@ const MessageItem: React.FC<{
                 <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
               ) : (
                 <div className="markdown-body">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                 </div>
               )}
             </Card>
@@ -568,7 +569,7 @@ const ChatPage: React.FC = () => {
   });
 
   const agentRecord = agentListData?.agent_list?.find(
-    (a) => a.agent_detail.agent_id === Number(agentId)
+    (a: { agent_detail: AgentDetail; llm_detail?: LlmInfo }) => a.agent_detail.agent_id === Number(agentId)
   );
 
   const agent = agentRecord ? {
@@ -578,7 +579,7 @@ const ChatPage: React.FC = () => {
 
   const runMutation = useMutation({
     mutationFn: runAgent,
-    onSuccess: (data) => {
+    onSuccess: (data: RunAgentResp) => {
       setMessages((prev) => [
         ...prev,
         {
